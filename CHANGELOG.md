@@ -3,6 +3,7 @@
 ## 0.1.0 — 2026-06-24
 
 ### Added
+
 - **Core engine**: content-agnostic hash-based stability tracking (`core.ts`)
 - **Cold-start heuristics**: universal position/size/structure signals (`heuristics.ts`)
 - **Block splitting**: automatic splitting of >4KB blocks at JSON/Markdown/XML boundaries (`splitting.ts`)

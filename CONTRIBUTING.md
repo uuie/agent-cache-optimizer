@@ -52,6 +52,7 @@ npm test
 ```
 
 Tests focus on:
+
 - Hash stability tracking correctness
 - Cold-start heuristic accuracy
 - Block splitting logic

@@ -149,10 +149,10 @@ After 3 observations:
 
 ### 3. Two-phase decision
 
-| Phase | Trigger | Method |
-|-------|---------|--------|
+| Phase          | Trigger                 | Method                                       |
+| -------------- | ----------------------- | -------------------------------------------- |
 | **Cold start** | First 2 calls per agent | Universal position/size/structure heuristics |
-| **Warm** | 3+ calls | Hash-based stability scores |
+| **Warm**       | 3+ calls                | Hash-based stability scores                  |
 
 The cold-start heuristics use **only** structural signals (position, size,
 delimiters, line density) — no keyword matching, no config awareness.
@@ -162,28 +162,28 @@ This means the plugin works immediately with **any** agent setup.
 
 Tested on a realistic OpenCode orchestrator prompt (~25KB system prompt):
 
-| Scenario | Cacheable prefix | Improvement |
-|----------|-----------------|-------------|
-| Original (no reorder) | 0 KB (0%) | — |
-| Cold start (heuristics) | 21.8 KB (88%) | +88% |
-| Warm (hash-based, 3+ sessions) | 21.8 KB (88%) | +88% |
+| Scenario                       | Cacheable prefix | Improvement |
+| ------------------------------ | ---------------- | ----------- |
+| Original (no reorder)          | 0 KB (0%)        | —           |
+| Cold start (heuristics)        | 21.8 KB (88%)    | +88%        |
+| Warm (hash-based, 3+ sessions) | 21.8 KB (88%)    | +88%        |
 
 **Per-agent results** (3 different agent configurations):
 
-| Agent | Blocks | Stable | Dynamic | Cacheable |
-|-------|--------|--------|---------|-----------|
-| orchestrator | 11 | 8 | 3 | 88% |
-| oracle | 6 | 3 | 3 | 88% |
-| fixer | 6 | 3 | 3 | 90% |
+| Agent        | Blocks | Stable | Dynamic | Cacheable |
+| ------------ | ------ | ------ | ------- | --------- |
+| orchestrator | 11     | 8      | 3       | 88%       |
+| oracle       | 6      | 3      | 3       | 88%       |
+| fixer        | 6      | 3      | 3       | 90%       |
 
 ## 🔌 Supported Platforms
 
-| Platform | Status | Adapter |
-|----------|--------|---------|
-| **OpenCode** | ✅ Plugin | `src/index.ts` (native) |
+| Platform        | Status        | Adapter                                            |
+| --------------- | ------------- | -------------------------------------------------- |
+| **OpenCode**    | ✅ Plugin     | `src/index.ts` (native)                            |
 | **Claude Code** | 📖 Guidelines | [adapters/claude-code.md](adapters/claude-code.md) |
-| **Codex** | 🔜 Planned | Adapt OpenCode plugin |
-| **Gemini CLI** | 🔜 Planned | Google context caching |
+| **Codex**       | 🔜 Planned    | Adapt OpenCode plugin                              |
+| **Gemini CLI**  | 🔜 Planned    | Google context caching                             |
 
 ## 🧩 API (standalone usage)
 

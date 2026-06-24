@@ -28,7 +28,7 @@ export function coldStartScore(block: string, index: number, total: number): num
   if (index === 0) score = 0.15
 
   // Blocks at positions 1-7 with non-trivial content are stable config
-  if (index >= 1 && index <= 7 && block.length > 200) score = 0.80
+  if (index >= 1 && index <= 7 && block.length > 200) score = 0.8
 
   // Last 2 blocks are usually dynamic, but structured blocks ({, [, <)
   // at the tail are probably split artifacts, not real injections.
@@ -38,7 +38,7 @@ export function coldStartScore(block: string, index: number, total: number): num
   // ── Size signals ──────────────────────────────────────────────
 
   if (block.length > 3000) score = Math.max(score, 0.85)
-  if (block.length < 100) score = Math.min(score, 0.20)
+  if (block.length < 100) score = Math.min(score, 0.2)
 
   // ── Structure signals ─────────────────────────────────────────
 
@@ -50,18 +50,18 @@ export function coldStartScore(block: string, index: number, total: number): num
   // Skip the boost for tail blocks (they're likely <memory> injections).
   const trimmed = block.trim()
   if (/^[<\{\[]|^```/.test(trimmed) && index < total - 2) {
-    score = Math.max(score, 0.80)
+    score = Math.max(score, 0.8)
   }
 
   // Second-person role assignment → agent system prompt → stable
   if (/^(You are|Your (job|role|task)|As an? )/m.test(block)) {
-    score = Math.max(score, 0.80)
+    score = Math.max(score, 0.8)
   }
 
   // Many very short lines (avg < 30 chars) suggests log/diary → dynamic
   const lines = block.split("\n")
   const avgLineLen = block.length / Math.max(1, lines.length)
-  if (lines.length > 15 && avgLineLen < 30) score = Math.min(score, 0.30)
+  if (lines.length > 15 && avgLineLen < 30) score = Math.min(score, 0.3)
 
   return score
 }
@@ -77,7 +77,7 @@ export function coldStartScore(block: string, index: number, total: number): num
 export function classify(
   blocks: string[],
   db: StabilityDB,
-  opts?: { warmThreshold?: number; splitThreshold?: number }
+  opts?: { warmThreshold?: number; splitThreshold?: number },
 ): Classified {
   // Split large blocks first
   const items = splitAll(blocks, opts?.splitThreshold)

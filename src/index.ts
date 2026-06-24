@@ -48,7 +48,9 @@ function saveDB(agent: string, db: StabilityDB): void {
     if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
     db.updated = Date.now()
     writeFileSync(dbPath(agent), JSON.stringify(db, null, 2))
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 
 // ── Diagnostics ──────────────────────────────────────────────────────
@@ -60,7 +62,9 @@ function diag(agent: string, msg: string): void {
     if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
     const ts = new Date().toISOString()
     writeFileSync(join(STATE_DIR, "diag.log"), `[${ts}] [${agent}] ${msg}\n`, { flag: "a" })
-  } catch { /* silent */ }
+  } catch {
+    /* silent */
+  }
 }
 
 // ── Plugin ───────────────────────────────────────────────────────────
@@ -78,20 +82,17 @@ export const CacheOptimizerPlugin: Plugin = async () => {
       const classified = classify(rawBlocks, db)
 
       // Reorder: stable → unknown → dynamic
-      output.system = [
-        ...classified.stable,
-        ...classified.unknown,
-        ...classified.dynamic,
-      ]
+      output.system = [...classified.stable, ...classified.unknown, ...classified.dynamic]
 
       // Persist for next call
       const updated = updateDB(db, output.system)
       saveDB(agent, updated)
 
-      diag(agent,
+      diag(
+        agent,
         `S:${classified.stable.length} U:${classified.unknown.length} ` +
-        `D:${classified.dynamic.length} T:${output.system.length} ` +
-        `obs:${updated.observations}`
+          `D:${classified.dynamic.length} T:${output.system.length} ` +
+          `obs:${updated.observations}`,
       )
     },
 
@@ -100,8 +101,10 @@ export const CacheOptimizerPlugin: Plugin = async () => {
     "chat.params": async (input, _output) => {
       if (!firstCallLogged) {
         firstCallLogged = true
-        diag(input.agent ?? "unknown",
-          `plugin-loaded agent=${input.agent ?? "?"} model=${input.model?.id ?? "?"}`)
+        diag(
+          input.agent ?? "unknown",
+          `plugin-loaded agent=${input.agent ?? "?"} model=${input.model?.id ?? "?"}`,
+        )
       }
     },
 

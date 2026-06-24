@@ -60,7 +60,7 @@ export function updateDB(db: StabilityDB, blocks: string[]): StabilityDB {
     if (!db.positions[i]) db.positions[i] = []
     const fps = db.positions[i]
     if (!fps) continue
-    const existing = fps.find(f => f.hash === h)
+    const existing = fps.find((f) => f.hash === h)
     if (existing) {
       existing.lastSeen = now
       existing.count++
@@ -74,13 +74,14 @@ export function updateDB(db: StabilityDB, blocks: string[]): StabilityDB {
     const pos = Number(posStr)
     for (const fp of fps) {
       const fidelity = fp.count / Math.max(1, db.observations)
-      const recency = (now - fp.lastSeen) < 24 * 60 * 60 * 1000 ? 1.0 : 0.7
+      const recency = now - fp.lastSeen < 24 * 60 * 60 * 1000 ? 1.0 : 0.7
       const varietyCount = db.positions[pos]?.length || 1
       const varietyPenalty = 1 / Math.max(1, varietyCount)
 
-      db.scores[fp.hash] = Math.min(1.0, Math.max(0.0,
-        fidelity * recency * (0.5 + 0.5 * varietyPenalty)
-      ))
+      db.scores[fp.hash] = Math.min(
+        1.0,
+        Math.max(0.0, fidelity * recency * (0.5 + 0.5 * varietyPenalty)),
+      )
     }
   }
 
