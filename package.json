@@ -1,6 +1,6 @@
 {
   "name": "agent-cache-optimizer",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Content-agnostic KV cache optimizer for LLM CLI agents — boosts prompt cache hit rate by 40-88% through automatic stability tracking and block reordering",
   "keywords": [
     "kv-cache",
@@ -25,6 +25,9 @@
   },
   "type": "module",
   "main": "./src/index.ts",
+  "bin": {
+    "aco": "./bin/aco"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./core": "./src/core.ts",
@@ -32,10 +35,10 @@
     "./splitting": "./src/splitting.ts"
   },
   "files": [
+    "bin/",
     "src/",
     "adapters/",
     "scripts/",
-    "skills/",
     "docs/",
     "README.md",
     "README.zh-CN.md",

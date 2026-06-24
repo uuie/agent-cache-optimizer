@@ -1,0 +1,168 @@
+#!/usr/bin/env bash
+# aco — agent-cache-optimizer CLI
+# Usage: aco status [--json]
+set -euo pipefail
+
+CACHE_DIR="${HOME}/.cache/opencode/agent-cache-optimizer"
+CMD="${1:-help}"
+
+# ── Colors ────────────────────────────────────────────────────────
+BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+# ── status ────────────────────────────────────────────────────────
+status_json() {
+  local agents_json="{}"
+  for db in "$CACHE_DIR"/stability-*.json; do
+    [[ -f "$db" ]] || continue
+    local agent
+    agent=$(basename "$db" .json | sed 's/^stability-//')
+    local obs
+    obs=$(python3 -c "import json; d=json.load(open('$db')); print(d.get('observations', 0))" 2>/dev/null || echo 0)
+    local pos_count
+    pos_count=$(python3 -c "import json; d=json.load(open('$db')); print(len(d.get('positions', {})))" 2>/dev/null || echo 0)
+    local avg_score
+    avg_score=$(python3 -c "
+import json
+d=json.load(open('$db'))
+scores=list(d.get('scores',{}).values())
+stable=sum(1 for s in scores if s>=0.7)
+total=len(scores)
+print(f'{stable}/{total}')" 2>/dev/null || echo "0/0")
+    agents_json=$(echo "$agents_json" | python3 -c "
+import json,sys
+agents=json.load(sys.stdin)
+agents['$agent']={'observations':$obs,'positions':$pos_count,'stable':'$avg_score'}
+print(json.dumps(agents))" 2>/dev/null || echo "$agents_json")
+  done
+
+  local diag_entries=0
+  [[ -f "$CACHE_DIR/diag.log" ]] && diag_entries=$(wc -l < "$CACHE_DIR/diag.log" | tr -d ' ')
+
+  local total_obs=0
+  for db in "$CACHE_DIR"/stability-*.json; do
+    [[ -f "$db" ]] || continue
+    local o
+    o=$(python3 -c "import json; d=json.load(open('$db')); print(d.get('observations', 0))" 2>/dev/null || echo 0)
+    total_obs=$((total_obs + o))
+  done
+
+  local status="no_data"
+  [[ $diag_entries -gt 0 ]] && status="active"
+
+  python3 -c "
+import json
+print(json.dumps({
+  'status': '$status',
+  'diag_entries': $diag_entries,
+  'total_observations': $total_obs,
+  'agents': $agents_json
+}, indent=2))"
+}
+
+status_text() {
+  # Check if any data exists
+  if [[ ! -d "$CACHE_DIR" ]] || [[ -z "$(ls "$CACHE_DIR"/stability-*.json 2>/dev/null)" ]]; then
+    echo ""
+    echo -e "${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}║           agent-cache-optimizer Status               ║${NC}"
+    echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
+    echo -e "║ ${YELLOW}Status: NO DATA${NC}                                          ║"
+    echo -e "║                                                       ║"
+    echo -e "║ Plugin has not been invoked yet. Make a request first. ║"
+    echo -e "${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    return
+  fi
+
+  # Count agents
+  local agent_count=0
+  for db in "$CACHE_DIR"/stability-*.json; do [[ -f "$db" ]] && agent_count=$((agent_count + 1)); done
+
+  # Diag entries
+  local diag_entries=0 first_ts="" last_ts=""
+  if [[ -f "$CACHE_DIR/diag.log" ]]; then
+    diag_entries=$(wc -l < "$CACHE_DIR/diag.log" | tr -d ' ')
+    first_ts=$(head -1 "$CACHE_DIR/diag.log" | grep -oP '^\[[^\]]+\]' | tr -d '[]' 2>/dev/null || echo "?")
+    last_ts=$(tail -1 "$CACHE_DIR/diag.log" | grep -oP '^\[[^\]]+\]' | tr -d '[]' 2>/dev/null || echo "?")
+  fi
+
+  echo ""
+  echo -e "${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
+  echo -e "${BOLD}║           agent-cache-optimizer Status               ║${NC}"
+  echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
+
+  if [[ $diag_entries -gt 0 ]]; then
+    echo -e "║ ${GREEN}Status: ACTIVE${NC}                                           ║"
+    printf "║ Uptime: %-46s ║\n" "$first_ts → $last_ts"
+  else
+    echo -e "║ ${YELLOW}Status: LOADED (no activity yet)${NC}                        ║"
+  fi
+
+  echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
+
+  if [[ $agent_count -eq 0 ]]; then
+    echo -e "║ ${YELLOW}No per-agent data yet${NC}                                    ║"
+  else
+    printf "║ ${CYAN}%-22s %5s %8s %9s${NC} ║\n" "Agent" "Obs" "Pos" "Stable"
+    for db in "$CACHE_DIR"/stability-*.json; do
+      [[ -f "$db" ]] || continue
+      local agent obs pos stable
+      agent=$(basename "$db" .json | sed 's/^stability-//')
+      obs=$(python3 -c "import json; d=json.load(open('$db')); print(d.get('observations', 0))" 2>/dev/null || echo 0)
+      pos=$(python3 -c "import json; d=json.load(open('$db')); print(len(d.get('positions', {})))" 2>/dev/null || echo 0)
+      stable=$(python3 -c "
+import json
+d=json.load(open('$db'))
+scores=list(d.get('scores',{}).values())
+if scores:
+    s=sum(1 for v in scores if v>=0.7)
+    print(f'{s}/{len(scores)}')
+else:
+    print('0/0')" 2>/dev/null || echo "0/0")
+      printf "║ %-22s %5s %8s %9s ║\n" "$agent" "$obs" "$pos" "$stable"
+    done
+  fi
+
+  echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
+
+  if [[ $diag_entries -gt 0 ]]; then
+    echo -e "║ ${CYAN}Last reorder:${NC}                                           ║"
+    tail -1 "$CACHE_DIR/diag.log" 2>/dev/null | while IFS= read -r line; do
+      printf "║   %-52s ║\n" "${line:0:52}"
+    done
+  fi
+
+  echo -e "${BOLD}╚══════════════════════════════════════════════════════╝${NC}"
+  echo ""
+}
+
+# ── help ───────────────────────────────────────────────────────────
+help_text() {
+  echo "agent-cache-optimizer (aco) — KV cache optimizer for LLM CLI agents"
+  echo ""
+  echo "Usage: aco <command>"
+  echo ""
+  echo "Commands:"
+  echo "  status          Show cache optimizer status"
+  echo "  status --json   Show status in JSON format"
+  echo "  help            Show this help"
+}
+
+# ── Main ───────────────────────────────────────────────────────────
+case "$CMD" in
+  status)
+    if [[ "${2:-}" == "--json" ]]; then
+      status_json
+    else
+      status_text
+    fi
+    ;;
+  help|--help|-h)
+    help_text
+    ;;
+  *)
+    echo "Unknown command: $CMD"
+    help_text
+    exit 1
+    ;;
+esac

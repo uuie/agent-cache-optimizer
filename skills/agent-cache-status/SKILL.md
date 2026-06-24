@@ -1,11 +1,11 @@
 ---
-name: cache-status
-description: Show KV cache optimizer status — stability DBs, reordering stats, diagnostics. Trigger: /cache-status
+name: agent-cache-status
+description: Show agent-cache-optimizer status — stability DBs, reordering stats, diagnostics. Trigger: /agent-cache-status
 ---
 
-# KV Cache Optimizer Status
+# Agent Cache Optimizer Status
 
-Show the current state of the KV cache optimizer plugin (agent-cache-optimizer.ts).
+Show the current state of the agent-cache-optimizer plugin.
 
 ## Data Locations
 
