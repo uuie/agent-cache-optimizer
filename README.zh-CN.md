@@ -87,13 +87,13 @@ tail -f ~/.cache/opencode/agent-cache-optimizer/diag.log
 OpenCode 内：
 
 ```
-aco status
+agent-cache-optimizer status
 ```
 
 终端：
 
 ```bash
-bash scriptsaco status.sh
+bash scriptsagent-cache-optimizer status.sh
 ```
 
 ## 🏗 工作原理

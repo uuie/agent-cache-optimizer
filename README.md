@@ -85,8 +85,8 @@ tail -f ~/.cache/opencode/agent-cache-optimizer/diag.log
 ### Status dashboard
 
 ```bash
-aco status           # text dashboard
-aco status --json    # JSON for scripts
+agent-cache-optimizer status           # text dashboard
+agent-cache-optimizer status --json    # JSON for scripts
 ```
 
 ### Output
@@ -210,7 +210,7 @@ agent-cache-optimizer/
 ├── adapters/
 │   └── claude-code.md    # Claude Code optimization guide
 ├── bin/
-│   └── aco               # CLI: aco status
+│   └── aco               # CLI: agent-cache-optimizer status
 ├── scripts/
 │   ├── cache-status.sh   # Status dashboard (legacy)
 │   └── check-cache-friendly.sh  # Config audit tool
