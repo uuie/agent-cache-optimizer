@@ -1,0 +1,70 @@
+{
+  "name": "agent-cache-optimizer",
+  "version": "0.1.0",
+  "description": "Content-agnostic KV cache optimizer for LLM CLI agents — boosts prompt cache hit rate by 40-88% through automatic stability tracking and block reordering",
+  "keywords": [
+    "kv-cache",
+    "prompt-caching",
+    "llm",
+    "deepseek",
+    "anthropic",
+    "openai",
+    "opencode",
+    "claude-code",
+    "optimization",
+    "token-savings"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Chris",
+    "url": "https://github.com/chris"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/uuie/agent-cache-optimizer"
+  },
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.ts",
+    "./heuristics": "./src/heuristics.ts",
+    "./splitting": "./src/splitting.ts"
+  },
+  "files": [
+    "src/",
+    "adapters/",
+    "scripts/",
+    "skills/",
+    "docs/",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"*.md\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.md\"",
+    "check": "bash scripts/cache-status.sh",
+    "audit": "bash scripts/check-cache-friendly.sh --all",
+    "prepublishOnly": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.15.0",
+    "@types/node": "^26.0.0",
+    "prettier": "^3.3.0",
+    "vitest": "^2.1.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.15.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
+  }
+}

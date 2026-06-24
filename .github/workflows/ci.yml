@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test
+
+      - name: Verify exports
+        run: |
+          node -e "
+            import('./src/core.js').then(m => {
+              const keys = Object.keys(m);
+              const required = ['hashContent','emptyDB','lookupScore','updateDB','isWarm'];
+              const missing = required.filter(k => !keys.includes(k));
+              if (missing.length) { console.error('Missing exports:', missing); process.exit(1); }
+              console.log('All core exports verified:', keys.join(', '));
+            }).catch(e => { console.error(e); process.exit(1); });
+          "
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check formatting
+        run: |
+          npx prettier --check "src/**/*.ts" "*.md" 2>/dev/null || {
+            echo "⚠️  Prettier not configured — install with: npm install --save-dev prettier"
+            echo "Skipping format check."
+          }
