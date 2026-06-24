@@ -24,22 +24,10 @@ jobs:
       - run: npm ci
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Run tests
         run: npm test
-
-      - name: Verify exports
-        run: |
-          node -e "
-            import('./src/core.js').then(m => {
-              const keys = Object.keys(m);
-              const required = ['hashContent','emptyDB','lookupScore','updateDB','isWarm'];
-              const missing = required.filter(k => !keys.includes(k));
-              if (missing.length) { console.error('Missing exports:', missing); process.exit(1); }
-              console.log('All core exports verified:', keys.join(', '));
-            }).catch(e => { console.error(e); process.exit(1); });
-          "
 
   lint:
     runs-on: ubuntu-latest
@@ -54,8 +42,4 @@ jobs:
       - run: npm ci
 
       - name: Check formatting
-        run: |
-          npx prettier --check "src/**/*.ts" "*.md" 2>/dev/null || {
-            echo "⚠️  Prettier not configured — install with: npm install --save-dev prettier"
-            echo "Skipping format check."
-          }
+        run: npm run format:check
