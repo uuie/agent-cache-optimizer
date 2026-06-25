@@ -14,7 +14,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
-import { emptyDB, updateDB, extractWarmHashes, estimateSavings } from "./core"
+import { emptyDB, updateDB, updateContentDB, extractWarmHashes, estimateSavings } from "./core"
 import { classify } from "./heuristics"
 import type { StabilityDB } from "./types"
 
@@ -150,13 +150,14 @@ export const CacheOptimizerPlugin: Plugin = async () => {
       // Reorder: stable → unknown → dynamic
       output.system = [...classified.stable, ...classified.unknown, ...classified.dynamic]
 
-      // Persist
-      const updated = updateDB(db, output.system)
-      saveDB(agent, updated)
+      // Persist position-based + content-addressed
+      updateDB(db, output.system)
+      updateContentDB(db, output.system)
+      saveDB(agent, db)
 
       // Update warm cache every 10 observations
-      if (updated.observations % 10 === 0) {
-        saveWarmCache(updated)
+      if (db.observations % 10 === 0) {
+        saveWarmCache(db)
       }
 
       // Track savings
@@ -173,7 +174,7 @@ export const CacheOptimizerPlugin: Plugin = async () => {
         agent,
         `S:${classified.stable.length} U:${classified.unknown.length} ` +
           `D:${classified.dynamic.length} T:${output.system.length} ` +
-          `obs:${updated.observations} ` +
+          `obs:${db.observations} ` +
           `stableKB:${(stableBytes / 1024).toFixed(1)} ` +
           `saved:$${estCallSaving.toFixed(6)} ` +
           `total:$${savings.estimatedSavingsUSD.toFixed(4)}`,
@@ -208,7 +209,7 @@ export const CacheOptimizerPlugin: Plugin = async () => {
 }
 
 // Re-exports
-export { emptyDB, updateDB, hashContent, lookupScore, isWarm, extractWarmHashes, isWarmHash, estimateSavings } from "./core"
+export { emptyDB, updateDB, updateContentDB, hashContent, lookupScore, lookupContentScore, isWarm, extractWarmHashes, isWarmHash, estimateSavings } from "./core"
 export { coldStartScore, classify } from "./heuristics"
 export { splitBlock, splitAll } from "./splitting"
 export type { StabilityDB, Classified, BlockFingerprint, CacheOptimizerOptions } from "./types"

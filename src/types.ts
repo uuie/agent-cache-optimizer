@@ -1,27 +1,36 @@
 /** A fingerprint record for one hash observed at one position */
 export interface BlockFingerprint {
   hash: string
-  /** First time this exact hash was seen (epoch ms) */
   firstSeen: number
-  /** Most recent time this hash was seen */
   lastSeen: number
-  /** Total observations of this hash at this position */
   count: number
 }
 
-/** Stability database — persisted per-agent to track block stability over time */
+/** Content-addressed fingerprint — position-independent */
+export interface ContentFingerprint {
+  hash: string
+  firstSeen: number
+  lastSeen: number
+  count: number
+}
+
+/** Stability database — persisted per-agent */
 export interface StabilityDB {
-  /** Block position → fingerprints observed at that position */
+  /** Position-based fingerprints (legacy, fallback) */
   positions: Record<number, BlockFingerprint[]>
-  /** Hash → stability score (1.0 = never changes, 0.0 = changes every call) */
+  /** Position-based scores */
   scores: Record<string, number>
-  /** Total calls observed */
+  /** Content-addressed fingerprints (primary) */
+  contentIndex: Record<string, ContentFingerprint>
+  /** Content-addressed scores */
+  contentScores: Record<string, number>
+  /** Total observations */
   observations: number
   /** Last write timestamp */
   updated: number
 }
 
-/** Classification result after scoring all blocks */
+/** Classification result */
 export interface Classified {
   stable: string[]
   unknown: string[]
@@ -30,10 +39,7 @@ export interface Classified {
 
 /** Options for the cache optimizer plugin */
 export interface CacheOptimizerOptions {
-  /** Minimum block size in bytes to attempt splitting (default: 4000) */
   splitThreshold: number
-  /** Path to store stability databases and logs */
   stateDir: string
-  /** Minimum observations before switching from heuristics to hash-based scoring */
   warmThreshold: number
 }
