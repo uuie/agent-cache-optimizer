@@ -41,9 +41,10 @@ function loadDB(agent: string): StabilityDB {
     const db = JSON.parse(raw) as StabilityDB
     // Migrate from pre-0.5.0: rebuild contentIndex from position data
     if (
-      (!db.contentIndex || Object.keys(db.contentIndex).length === 0) &&
       db.positions &&
-      Object.keys(db.positions).length > 0
+      Object.keys(db.positions).length > 0 &&
+      ((!db.contentIndex || Object.keys(db.contentIndex).length === 0) ||
+        db.contentObservations === undefined)
     ) {
       db.contentIndex = {}
       for (const fps of Object.values(db.positions)) {
@@ -214,8 +215,8 @@ export const CacheOptimizerPlugin: Plugin = async () => {
         const warmCount = warmHashes?.size ?? 0
         diag(
           agent,
-          `plugin-loaded agent=${agent} model=${input.model?.id ?? "?"} ` +
-            `warm-hashes=${warmCount}`,
+          `v0.5.2 loaded agent=${agent} model=${input.model?.id ?? "?"} ` +
+            `warm=${warmCount}`,
         )
       }
     },
