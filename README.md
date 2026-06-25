@@ -103,13 +103,15 @@ agent-cache-optimizer status --json    # JSON for scripts
 ║ orchestrator        12         11      8/11                  ║
 ║ oracle               3          5      3/5                   ║
 ╠══════════════════════════════════════════════════════════════╣
-║ Estimated cache reuse: ~73% of system prompt                 ║
+║ Est. savings: $1.2345 over 50 calls                         ║
+║ Warm cache: 25 stable hashes pinned                          ║
+║ Last reorder: S:25 U:0 D:0 T:25 obs:150                     ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
 ## 🏗 How It Works
 
-### 1. Observe (content-agnostic)
+### 1. Observe (content-addressed, position-independent)
 
 The plugin **never reads the content** of your prompts. It only hashes
 each system block and tracks which hashes stay the same vs change across calls.
@@ -159,15 +161,14 @@ Tested on a realistic OpenCode orchestrator prompt (~25KB system prompt):
 | ------------------------------ | ---------------- | ----------- |
 | Original (no reorder)          | 0 KB (0%)        | —           |
 | Cold start (heuristics)        | 21.8 KB (88%)    | +88%        |
-| Warm (hash-based, 3+ sessions) | 21.8 KB (88%)    | +88%        |
+| **Content-addressed (v0.5)**   | **52.9 KB (100%)** | **+100%** |
 
-**Per-agent results** (3 different agent configurations):
+**Production results** (155 observations, deepseek-v4-pro):
 
-| Agent        | Blocks | Stable | Dynamic | Cacheable |
-| ------------ | ------ | ------ | ------- | --------- |
-| orchestrator | 11     | 8      | 3       | 88%       |
-| oracle       | 6      | 3      | 3       | 88%       |
-| fixer        | 6      | 3      | 3       | 90%       |
+| Phase | S | U | D | Stable KB |
+|-------|---|---|---|-----------|
+| Pre-v0.5 (position-based) | 1 | 0 | 24 | ~2 KB |
+| **v0.5 (content-addressed)** | **25** | **0** | **0** | **52.9 KB** |
 
 ## 🔌 Supported Platforms
 
@@ -202,25 +203,26 @@ db = updateDB(db, optimized)
 ```
 agent-cache-optimizer/
 ├── src/
-│   ├── index.ts          # OpenCode plugin entry point
-│   ├── core.ts           # Hash-tracking engine (CLI-agnostic)
-│   ├── heuristics.ts     # Cold-start position/size classifiers
-│   ├── splitting.ts      # Large block splitter (>4KB)
+│   ├── index.ts          # OpenCode plugin entry
+│   ├── core.ts           # Content-addressed hash engine
+│   ├── heuristics.ts     # Cold-start + content classifiers
+│   ├── splitting.ts      # Large block splitter
 │   └── types.ts          # TypeScript types
 ├── adapters/
-│   └── claude-code.md    # Claude Code optimization guide
+│   ├── claude-code.md    # Claude Code optimization guide
+│   └── conversation-log.md # Append-only log guidelines
 ├── bin/
 │   └── aco               # CLI: agent-cache-optimizer status
 ├── scripts/
-│   ├── cache-status.sh   # Status dashboard (legacy)
+│   ├── cache-status.sh   # Legacy status script
 │   └── check-cache-friendly.sh  # Config audit tool
 ├── docs/
-│   ├── cross-cli.md      # Cross-CLI architecture
-│   └── upstream.md       # Upstream fix recommendations
-├── README.md
-├── README.zh-CN.md       # 中文文档
-├── LICENSE               # MIT
-└── CHANGELOG.md
+│   ├── deep-research-kv-cache.md  # DeepSeek KV cache research
+│   ├── cross-cli.md               # Cross-CLI architecture
+│   └── upstream.md                # Upstream fix recommendations
+├── README.md + README.zh-CN.md
+├── CHANGELOG.md
+└── LICENSE (MIT)
 ```
 
 ## 🛠 Cache-Friendliness Audit
