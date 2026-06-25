@@ -122,10 +122,31 @@ describe("CacheOptimizerPlugin provider/model scope", () => {
       const files = readdirSync(stateDir(cacheRoot))
         .filter((file) => file.startsWith("stability-"))
         .sort()
-      expect(files).toEqual([
-        "stability-deepseek__deepseek-chat__build.json",
-        "stability-deepseek__deepseek-chat__review.json",
-      ])
+      expect(files).toContain("stability-deepseek__deepseek-chat__build.json")
+      expect(files).toContain("stability-deepseek__deepseek-chat__review.json")
+    })
+  })
+
+  it("writes a provider-model family DB alongside agent-scoped DBs", async () => {
+    await withPlugin(async (hooks, cacheRoot) => {
+      const stable = "Stable shared prompt content for the model family. ".repeat(20)
+      const dynamic = "currentDate: 2026-06-25\nsession id: family-db"
+
+      await hooks["chat.params"](
+        { sessionID: "s-build-family", agent: "build", model: model("deepseek") },
+        {},
+      )
+      await hooks["experimental.chat.system.transform"](
+        { sessionID: "s-build-family", model: model("deepseek") },
+        { system: [dynamic, stable] },
+      )
+
+      const files = readdirSync(stateDir(cacheRoot))
+        .filter((file) => file.startsWith("stability-"))
+        .sort()
+
+      expect(files).toContain("stability-deepseek__deepseek-chat.json")
+      expect(files).toContain("stability-deepseek__deepseek-chat__build.json")
     })
   })
 
@@ -399,6 +420,65 @@ describe("CacheOptimizerPlugin provider/model scope", () => {
       expect(warm.scopes["deepseek__deepseek-chat__build"]).toContain(stableHash)
       expect(warm.scopes["deepseek__deepseek-chat__review"]).toContain(stableHash)
       expect(warm.global).toContain(stableHash)
+    })
+  })
+
+  it("orders family-stable shared blocks before agent-specific stable blocks after agent switches", async () => {
+    await withPlugin(async (hooks, cacheRoot) => {
+      const sharedTools =
+        "Shared tool and project instructions stay identical across agents. ".repeat(30)
+      const buildPrompt = "You are the build agent with build-only instructions. ".repeat(30)
+      const reviewPrompt = "You are the review agent with review-only instructions. ".repeat(30)
+
+      await hooks["chat.params"](
+        { sessionID: "s-build", agent: "build", model: model("deepseek") },
+        {},
+      )
+      for (let i = 0; i < 3; i++) {
+        await hooks["experimental.chat.system.transform"](
+          { sessionID: "s-build", model: model("deepseek") },
+          { system: [`currentDate: 2026-06-25\nsession id: build-${i}`, buildPrompt, sharedTools] },
+        )
+      }
+
+      await hooks["chat.params"](
+        { sessionID: "s-review", agent: "review", model: model("deepseek") },
+        {},
+      )
+      for (let i = 0; i < 3; i++) {
+        await hooks["experimental.chat.system.transform"](
+          { sessionID: "s-review", model: model("deepseek") },
+          {
+            system: [`currentDate: 2026-06-25\nsession id: review-${i}`, reviewPrompt, sharedTools],
+          },
+        )
+      }
+
+      const output = {
+        system: ["currentDate: 2026-06-25\nsession id: review-final", reviewPrompt, sharedTools],
+      }
+      await hooks["experimental.chat.system.transform"](
+        { sessionID: "s-review", model: model("deepseek") },
+        output,
+      )
+
+      expect(output.system[0]).toBe(sharedTools)
+      expect(output.system[1]).toBe(reviewPrompt)
+      expect(output.system[2]).toContain("session id: review-final")
+
+      const raw = readFileSync(join(stateDir(cacheRoot), "events.jsonl"), "utf-8")
+      const events = raw
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+      const transform = events.filter((event) => event.type === "transform").at(-1)
+
+      expect(transform.ranking).toMatchObject({
+        sharedStable: 1,
+        scopedStable: 1,
+        coldStable: 0,
+      })
+      expect(transform.ranking.sharedPrefixBytes).toBe(sharedTools.length)
     })
   })
 

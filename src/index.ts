@@ -21,6 +21,7 @@ import {
   extractWarmHashes,
   estimateSavings,
   hashContent,
+  lookupContentScore,
 } from "./core"
 import { classify } from "./heuristics"
 import { splitAll } from "./splitting"
@@ -102,24 +103,53 @@ function saveDB(scope: string, db: StabilityDB): void {
 
 // ── Session scope tracking ───────────────────────────────────────────
 
-const sessionScopes = new Map<string, string>()
+interface ScopeContext {
+  scope: string
+  familyScope: string
+}
+
+const sessionScopes = new Map<string, ScopeContext>()
+
+function familyScope(model: ModelIdentity | undefined): string {
+  return modelScope(model)
+}
+
+function scopeContext(model: ModelIdentity | undefined, agent?: string): ScopeContext {
+  const scope = modelScope(model, agent)
+  const modelFamily = familyScope(model)
+  return {
+    scope,
+    familyScope: modelFamily === "default" ? scope : modelFamily,
+  }
+}
 
 function rememberSessionScope(
   sessionID: string | undefined,
   model: ModelIdentity | undefined,
   agent?: string,
 ): string {
-  const scope = modelScope(model, agent)
-  if (sessionID) sessionScopes.set(sessionID, scope)
-  return scope
+  const context = scopeContext(model, agent)
+  if (sessionID) sessionScopes.set(sessionID, context)
+  return context.scope
 }
 
 function scopeForSession(sessionID: string | undefined, model: ModelIdentity | undefined): string {
   if (sessionID) {
     const known = sessionScopes.get(sessionID)
-    if (known) return known
+    if (known) return known.scope
   }
-  return modelScope(model)
+  return scopeContext(model).scope
+}
+
+function familyScopeForSession(
+  sessionID: string | undefined,
+  model: ModelIdentity | undefined,
+): string {
+  if (sessionID) {
+    const known = sessionScopes.get(sessionID)
+    if (known) return known.familyScope
+  }
+  return scopeContext(model).familyScope
 }
 
 // ── Cache warming ────────────────────────────────────────────────────
@@ -607,6 +637,77 @@ function pruneStaleHashes(db: StabilityDB): void {
   }
 }
 
+// ── Cross-agent stable prefix ranking ────────────────────────────────
+
+interface WarmHashMembership {
+  global: Set<string>
+  scoped: Set<string>
+  family: Set<string>
+}
+
+interface StableRanking {
+  sharedStable: string[]
+  scopedStable: string[]
+  coldStable: string[]
+  dynamic: string[]
+}
+
+function classificationWarmHashes(membership: WarmHashMembership): Set<string> {
+  const hashes = new Set<string>(membership.global)
+  for (const hash of membership.scoped) hashes.add(hash)
+  return hashes
+}
+
+function warmMembershipForScope(scope: string, familyDB: StabilityDB): WarmHashMembership {
+  const cache = loadWarmCache()
+  return {
+    global: cache.global,
+    scoped: cache.scopes.get(scope) ?? new Set(),
+    family: extractWarmHashes(familyDB),
+  }
+}
+
+function hasStableContentScore(db: StabilityDB, hash: string): boolean {
+  const score = lookupContentScore(db, hash)
+  return db.contentObservations >= 2 && score !== null && score >= 0.7
+}
+
+function rankStableBlocks(
+  stableBlocks: string[],
+  dynamicBlocks: string[],
+  scopeDB: StabilityDB,
+  familyDB: StabilityDB,
+  warmMembership: WarmHashMembership,
+): StableRanking {
+  const ranking: StableRanking = {
+    sharedStable: [],
+    scopedStable: [],
+    coldStable: [],
+    dynamic: dynamicBlocks,
+  }
+
+  for (const block of stableBlocks) {
+    const hash = hashContent(block)
+    if (
+      warmMembership.global.has(hash) ||
+      warmMembership.family.has(hash) ||
+      hasStableContentScore(familyDB, hash)
+    ) {
+      ranking.sharedStable.push(block)
+      continue
+    }
+
+    if (warmMembership.scoped.has(hash) || hasStableContentScore(scopeDB, hash)) {
+      ranking.scopedStable.push(block)
+      continue
+    }
+
+    ranking.coldStable.push(block)
+  }
+
+  return ranking
+}
+
 // ── Plugin ───────────────────────────────────────────────────────────
 
 export const CacheOptimizerPlugin: Plugin = async () => {
@@ -639,27 +740,49 @@ export const CacheOptimizerPlugin: Plugin = async () => {
         status: "received",
       })
 
+      const family = familyScopeForSession(input.sessionID, input.model)
       const db = loadDB(scope)
+      const familyDB = family === scope ? db : loadDB(family)
+      const warmMembership = warmMembershipForScope(scope, familyDB)
 
-      // Pass warm hashes to classifier for cache warming
       const classified = classify(splitBlocks, db, {
         splitThreshold: Number.MAX_SAFE_INTEGER,
-        warmHashes: warmHashesForScope(scope),
+        warmHashes: classificationWarmHashes(warmMembership),
       })
 
-      // Reorder: stable → unknown → dynamic
-      output.system = [...classified.stable, ...classified.unknown, ...classified.dynamic]
+      const ranked = rankStableBlocks(
+        classified.stable,
+        [...classified.unknown, ...classified.dynamic],
+        db,
+        familyDB,
+        warmMembership,
+      )
+
+      output.system = [
+        ...ranked.sharedStable,
+        ...ranked.scopedStable,
+        ...ranked.coldStable,
+        ...ranked.dynamic,
+      ]
 
       // Persist position-based + content-addressed
       updateDB(db, output.system)
       updateContentDB(db, output.system)
+      if (family !== scope) {
+        updateDB(familyDB, output.system)
+        updateContentDB(familyDB, output.system)
+      }
 
       // Periodic maintenance
       if (db.observations % DB_PRUNE_INTERVAL === 0) {
         pruneStaleHashes(db)
       }
+      if (family !== scope && familyDB.observations % DB_PRUNE_INTERVAL === 0) {
+        pruneStaleHashes(familyDB)
+      }
 
       saveDB(scope, db)
+      if (family !== scope) saveDB(family, familyDB)
       rotateDiagLog()
 
       // Update warm cache every 10 observations
@@ -674,6 +797,7 @@ export const CacheOptimizerPlugin: Plugin = async () => {
       savings.totalObservations++
       savings.estimatedSavingsUSD = estimateSavings(savings.totalStableBytes, 1)
       saveSavings(savings)
+      const sharedPrefixBytes = ranked.sharedStable.reduce((s, b) => s + b.length, 0)
 
       // Diagnostic log with savings
       const estCallSaving = estimateSavings(stableBytes, 1)
@@ -682,13 +806,17 @@ export const CacheOptimizerPlugin: Plugin = async () => {
         scope,
         `S:${classified.stable.length} U:${classified.unknown.length} ` +
           `D:${classified.dynamic.length} T:${output.system.length} ` +
+          `SH:${ranked.sharedStable.length} SC:${ranked.scopedStable.length} ` +
+          `CS:${ranked.coldStable.length} ` +
           `obs:${db.observations} ` +
           `stableKB:${(stableBytes / 1024).toFixed(1)} ` +
+          `sharedKB:${(sharedPrefixBytes / 1024).toFixed(1)} ` +
           `saved:$${estCallSaving.toFixed(6)} ` +
           `total:$${savings.estimatedSavingsUSD.toFixed(4)}`,
       )
       eventLog("transform", scope, {
         sessionHash: hashID(input.sessionID),
+        family,
         counts: {
           stable: classified.stable.length,
           unknown: classified.unknown.length,
@@ -698,6 +826,13 @@ export const CacheOptimizerPlugin: Plugin = async () => {
         classifier: {
           unknown: classified.unknown.length,
           warmHashes: warmCount,
+        },
+        ranking: {
+          sharedStable: ranked.sharedStable.length,
+          scopedStable: ranked.scopedStable.length,
+          coldStable: ranked.coldStable.length,
+          dynamic: ranked.dynamic.length,
+          sharedPrefixBytes,
         },
         stableBytes,
         estimatedCallSavingsUSD: estCallSaving,
