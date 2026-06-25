@@ -77,13 +77,14 @@ export function coldStartScore(block: string, index: number, total: number): num
 export function classify(
   blocks: string[],
   db: StabilityDB,
-  opts?: { warmThreshold?: number; splitThreshold?: number },
+  opts?: { warmThreshold?: number; splitThreshold?: number; warmHashes?: Set<string> },
 ): Classified {
   // Split large blocks first
   const items = splitAll(blocks, opts?.splitThreshold)
 
   const result: Classified = { stable: [], unknown: [], dynamic: [] }
   const warm = isWarm(db, opts?.warmThreshold ?? 2)
+  const warmSet = opts?.warmHashes
   const total = items.length
 
   for (let i = 0; i < items.length; i++) {
@@ -92,9 +93,13 @@ export function classify(
 
     const hash = hashContent(item)
     const known = lookupScore(db, hash)
+    // Cache warming: if hash is in the warm set, treat as stable immediately
+    const cached = warmSet?.has(hash) ?? false
 
     let score: number
-    if (known !== null && warm) {
+    if (cached) {
+      score = 0.85 // warmed: treat as stable even on cold DB
+    } else if (known !== null && warm) {
       score = known
     } else {
       score = coldStartScore(item, i, total)

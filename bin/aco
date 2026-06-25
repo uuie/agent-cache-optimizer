@@ -49,13 +49,25 @@ print(json.dumps(agents))" 2>/dev/null || echo "$agents_json")
   local status="no_data"
   [[ $diag_entries -gt 0 ]] && status="active"
 
+  local savings_json="{}"
+  if [[ -f "$CACHE_DIR/savings.json" ]]; then
+    savings_json=$(python3 -c "import json; print(json.dumps(json.load(open('$CACHE_DIR/savings.json'))))" 2>/dev/null || echo "{}")
+  fi
+
+  local warm_count=0
+  if [[ -f "$CACHE_DIR/warm-cache.json" ]]; then
+    warm_count=$(python3 -c "import json; print(len(json.load(open('$CACHE_DIR/warm-cache.json'))))" 2>/dev/null || echo 0)
+  fi
+
   python3 -c "
 import json
 print(json.dumps({
   'status': '$status',
   'diag_entries': $diag_entries,
   'total_observations': $total_obs,
-  'agents': $agents_json
+  'agents': $agents_json,
+  'savings': $savings_json,
+  'warm_cache_hashes': $warm_count
 }, indent=2))"
 }
 
@@ -124,6 +136,28 @@ else:
   fi
 
   echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
+
+  # Savings
+  if [[ -f "$CACHE_DIR/savings.json" ]]; then
+    local saved
+    saved=$(python3 -c "
+import json
+d=json.load(open('$CACHE_DIR/savings.json'))
+print(f\"\${d.get('estimatedSavingsUSD', 0):.6f}\")" 2>/dev/null || echo "0")
+    local total_obs
+    total_obs=$(python3 -c "
+import json
+d=json.load(open('$CACHE_DIR/savings.json'))
+print(d.get('totalObservations', 0))" 2>/dev/null || echo "0")
+    printf "║ ${CYAN}Est. savings: \$${saved} over ${total_obs} calls${NC}               ║\n"
+  fi
+
+  # Warm cache
+  if [[ -f "$CACHE_DIR/warm-cache.json" ]]; then
+    local warm_count
+    warm_count=$(python3 -c "import json; print(len(json.load(open('$CACHE_DIR/warm-cache.json'))))" 2>/dev/null || echo "0")
+    printf "║ ${CYAN}Warm cache: ${warm_count} stable hashes pinned${NC}                      ║\n"
+  fi
 
   if [[ $diag_entries -gt 0 ]]; then
     echo -e "║ ${CYAN}Last reorder:${NC}                                           ║"

@@ -2,14 +2,10 @@
  * agent-cache-optimizer — OpenCode Plugin Entry Point
  *
  * Content-agnostic KV cache optimizer.  Reorders system prompt blocks so
- * that stable content (config, agent definitions, tool schemas) comes
- * FIRST and dynamic content (session handoff, memory injections, dates)
- * comes LAST.  This maximizes prefix-match cache reuse across sessions.
+ * that stable content comes FIRST and dynamic content comes LAST,
+ * maximizing prefix-match cache reuse across sessions.
  *
- * Installation:
- *   1. Add to opencode.json plugins: "agent-cache-optimizer"
- *   2. Or use file:// path for local development
- *   3. Restart OpenCode
+ * v0.4: cache warming, savings estimates, conversation log awareness
  *
  * @license MIT
  */
@@ -18,7 +14,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
-import { emptyDB, updateDB } from "./core"
+import { emptyDB, updateDB, extractWarmHashes, estimateSavings } from "./core"
 import { classify } from "./heuristics"
 import type { StabilityDB } from "./types"
 
@@ -35,6 +31,10 @@ function dbPath(agent: string): string {
   return join(STATE_DIR, `stability-${safe}.json`)
 }
 
+function warmCachePath(): string {
+  return join(STATE_DIR, "warm-cache.json")
+}
+
 function loadDB(agent: string): StabilityDB {
   try {
     return JSON.parse(readFileSync(dbPath(agent), "utf-8")) as StabilityDB
@@ -48,6 +48,67 @@ function saveDB(agent: string, db: StabilityDB): void {
     if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
     db.updated = Date.now()
     writeFileSync(dbPath(agent), JSON.stringify(db, null, 2))
+  } catch {
+    /* best-effort */
+  }
+}
+
+// ── Cache warming ────────────────────────────────────────────────────
+
+let warmHashes: Set<string> | null = null
+let warmHashesLoaded = false
+
+function loadWarmCache(): Set<string> | null {
+  if (warmHashesLoaded) return warmHashes
+  warmHashesLoaded = true
+  try {
+    const raw = readFileSync(warmCachePath(), "utf-8")
+    const hashes = JSON.parse(raw) as string[]
+    warmHashes = new Set(hashes)
+    return warmHashes
+  } catch {
+    return null
+  }
+}
+
+function saveWarmCache(db: StabilityDB): void {
+  try {
+    if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
+    const hashes = [...extractWarmHashes(db)]
+    if (hashes.length > 0) {
+      writeFileSync(warmCachePath(), JSON.stringify(hashes))
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
+// ── Savings tracking ────────────────────────────────────────────────
+
+function savingsPath(): string {
+  return join(STATE_DIR, "savings.json")
+}
+
+interface SavingsData {
+  totalStableBytes: number
+  totalObservations: number
+  estimatedSavingsUSD: number
+  updated: number
+}
+
+function loadSavings(): SavingsData {
+  try {
+    return JSON.parse(readFileSync(savingsPath(), "utf-8")) as SavingsData
+  } catch {
+    return { totalStableBytes: 0, totalObservations: 0, estimatedSavingsUSD: 0, updated: 0 }
+  }
+}
+
+function saveSavings(data: SavingsData): void {
+  try {
+    if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true })
+    data.updated = Date.now()
+    writeFileSync(savingsPath(), JSON.stringify(data, null, 2))
   } catch {
     /* best-effort */
   }
@@ -70,6 +131,9 @@ function diag(agent: string, msg: string): void {
 // ── Plugin ───────────────────────────────────────────────────────────
 
 export const CacheOptimizerPlugin: Plugin = async () => {
+  // Load cache warming data on plugin init
+  loadWarmCache()
+
   return {
     // ── Primary hook: system prompt reordering ─────────────────────
 
@@ -79,20 +143,40 @@ export const CacheOptimizerPlugin: Plugin = async () => {
 
       const agent = input.model?.id ?? "default"
       const db = loadDB(agent)
-      const classified = classify(rawBlocks, db)
+
+      // Pass warm hashes to classifier for cache warming
+      const classified = classify(rawBlocks, db, { warmHashes: warmHashes ?? undefined })
 
       // Reorder: stable → unknown → dynamic
       output.system = [...classified.stable, ...classified.unknown, ...classified.dynamic]
 
-      // Persist for next call
+      // Persist
       const updated = updateDB(db, output.system)
       saveDB(agent, updated)
 
+      // Update warm cache every 10 observations
+      if (updated.observations % 10 === 0) {
+        saveWarmCache(updated)
+      }
+
+      // Track savings
+      const stableBytes = classified.stable.reduce((s, b) => s + b.length, 0)
+      const savings = loadSavings()
+      savings.totalStableBytes += stableBytes
+      savings.totalObservations++
+      savings.estimatedSavingsUSD = estimateSavings(savings.totalStableBytes, savings.totalObservations)
+      saveSavings(savings)
+
+      // Diagnostic log with savings
+      const estCallSaving = estimateSavings(stableBytes, 1)
       diag(
         agent,
         `S:${classified.stable.length} U:${classified.unknown.length} ` +
           `D:${classified.dynamic.length} T:${output.system.length} ` +
-          `obs:${updated.observations}`,
+          `obs:${updated.observations} ` +
+          `stableKB:${(stableBytes / 1024).toFixed(1)} ` +
+          `saved:$${estCallSaving.toFixed(6)} ` +
+          `total:$${savings.estimatedSavingsUSD.toFixed(4)}`,
       )
     },
 
@@ -101,9 +185,12 @@ export const CacheOptimizerPlugin: Plugin = async () => {
     "chat.params": async (input, _output) => {
       if (!firstCallLogged) {
         firstCallLogged = true
+        const agent = input.agent ?? "unknown"
+        const warmCount = warmHashes?.size ?? 0
         diag(
-          input.agent ?? "unknown",
-          `plugin-loaded agent=${input.agent ?? "?"} model=${input.model?.id ?? "?"}`,
+          agent,
+          `plugin-loaded agent=${agent} model=${input.model?.id ?? "?"} ` +
+            `warm-hashes=${warmCount}`,
         )
       }
     },
@@ -120,8 +207,8 @@ export const CacheOptimizerPlugin: Plugin = async () => {
   }
 }
 
-// Re-export core for standalone usage
-export { emptyDB, updateDB, hashContent, lookupScore, isWarm } from "./core"
+// Re-exports
+export { emptyDB, updateDB, hashContent, lookupScore, isWarm, extractWarmHashes, isWarmHash, estimateSavings } from "./core"
 export { coldStartScore, classify } from "./heuristics"
 export { splitBlock, splitAll } from "./splitting"
 export type { StabilityDB, Classified, BlockFingerprint, CacheOptimizerOptions } from "./types"
