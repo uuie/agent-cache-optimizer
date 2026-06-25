@@ -5,10 +5,10 @@
  * that stable content comes FIRST and dynamic content comes LAST,
  * maximizing prefix-match cache reuse across sessions.
  *
- * v0.4: cache warming, savings estimates, conversation log awareness
- *
  * @license MIT
  */
+
+const VERSION = "0.5.3"
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { join } from "node:path"
@@ -40,26 +40,12 @@ function loadDB(agent: string): StabilityDB {
     const raw = readFileSync(dbPath(agent), "utf-8")
     const db = JSON.parse(raw) as StabilityDB
     // Migrate from pre-0.5.0: rebuild contentIndex from position data
-    if (
-      db.positions &&
-      Object.keys(db.positions).length > 0 &&
-      ((!db.contentIndex || Object.keys(db.contentIndex).length === 0) ||
-        db.contentObservations === undefined)
-    ) {
+    // Migrate from pre-0.5.x: ensure contentObservations exists
+    if (db.contentObservations === undefined || db.contentObservations === null) {
+      // Reset contentIndex — old position-based counts don't map cleanly
       db.contentIndex = {}
-      for (const fps of Object.values(db.positions)) {
-        for (const fp of fps) {
-          const existing = db.contentIndex[fp.hash]
-          if (existing) {
-            existing.count = Math.max(existing.count, fp.count)
-            if (fp.lastSeen > existing.lastSeen) existing.lastSeen = fp.lastSeen
-          } else {
-            db.contentIndex[fp.hash] = { ...fp }
-          }
-        }
-      }
       db.contentScores = {}
-      db.contentObservations = 0 // warm from scratch for accurate scores
+      db.contentObservations = 0
       saveDB(agent, db)
     }
     return db
@@ -215,7 +201,7 @@ export const CacheOptimizerPlugin: Plugin = async () => {
         const warmCount = warmHashes?.size ?? 0
         diag(
           agent,
-          `v0.5.2 loaded agent=${agent} model=${input.model?.id ?? "?"} ` +
+          `v${VERSION} loaded agent=${agent} model=${input.model?.id ?? "?"} ` +
             `warm=${warmCount}`,
         )
       }
