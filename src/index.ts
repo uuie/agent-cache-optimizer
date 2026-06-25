@@ -8,7 +8,7 @@
  * @license MIT
  */
 
-const VERSION = "0.5.3"
+const VERSION = "0.5.4"
 
 import type { Plugin } from "@opencode-ai/plugin"
 import { join } from "node:path"
@@ -127,6 +127,11 @@ function saveSavings(data: SavingsData): void {
 
 // ── Diagnostics ──────────────────────────────────────────────────────
 
+const MAX_DIAG_LINES = 1000
+const MAX_DIAG_BYTES = 50 * 1024 // 50KB
+const DB_PRUNE_INTERVAL = 100 // prune every N observations
+const DB_STALE_DAYS = 7
+
 let firstCallLogged = false
 
 function diag(agent: string, msg: string): void {
@@ -136,6 +141,44 @@ function diag(agent: string, msg: string): void {
     writeFileSync(join(STATE_DIR, "diag.log"), `[${ts}] [${agent}] ${msg}\n`, { flag: "a" })
   } catch {
     /* silent */
+  }
+}
+
+// ── Disk management ──────────────────────────────────────────────────
+
+function rotateDiagLog(): void {
+  try {
+    const path = join(STATE_DIR, "diag.log")
+    if (!existsSync(path)) return
+    const stat = existsSync(path) ? readFileSync(path, "utf-8").length : 0
+    if (stat < MAX_DIAG_BYTES) return
+    const lines = readFileSync(path, "utf-8").split("\n").filter(Boolean)
+    if (lines.length <= MAX_DIAG_LINES) return
+    writeFileSync(path, lines.slice(-MAX_DIAG_LINES).join("\n") + "\n")
+  } catch {
+    /* best-effort */
+  }
+}
+
+function pruneStaleHashes(db: StabilityDB): void {
+  const now = Date.now()
+  const staleMs = DB_STALE_DAYS * 24 * 60 * 60 * 1000
+  // Prune contentIndex: remove hashes not seen in STALE_DAYS with low count
+  for (const [hash, fp] of Object.entries(db.contentIndex)) {
+    if (now - fp.lastSeen > staleMs && fp.count <= 2) {
+      delete db.contentIndex[hash]
+      delete db.contentScores[hash]
+    }
+  }
+  // Prune position hashes similarly
+  for (const fps of Object.values(db.positions)) {
+    for (let i = fps.length - 1; i >= 0; i--) {
+      const fp = fps[i]!
+      if (now - fp.lastSeen > staleMs && fp.count <= 2) {
+        delete db.scores[fp.hash]
+        fps.splice(i, 1)
+      }
+    }
   }
 }
 
@@ -164,7 +207,14 @@ export const CacheOptimizerPlugin: Plugin = async () => {
       // Persist position-based + content-addressed
       updateDB(db, output.system)
       updateContentDB(db, output.system)
+
+      // Periodic maintenance
+      if (db.observations % DB_PRUNE_INTERVAL === 0) {
+        pruneStaleHashes(db)
+      }
+
       saveDB(agent, db)
+      rotateDiagLog()
 
       // Update warm cache every 10 observations
       if (db.observations % 10 === 0) {
