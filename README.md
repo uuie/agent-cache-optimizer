@@ -174,17 +174,17 @@ All session and message IDs are content-hashed for privacy.
 
 Tested on a realistic OpenCode orchestrator prompt (~25KB system prompt):
 
-| Scenario                       | Cacheable prefix | Improvement |
-| ------------------------------ | ---------------- | ----------- |
-| Original (no reorder)          | 0 KB (0%)        | —           |
-| Cold start (heuristics)        | 21.8 KB (88%)    | +88%        |
-| **Content-addressed (v0.5)**   | **52.9 KB (100%)** | **+100%** |
+| Scenario                     | Cacheable prefix   | Improvement |
+| ---------------------------- | ------------------ | ----------- |
+| Original (no reorder)        | 0 KB (0%)          | —           |
+| Cold start (heuristics)      | 21.8 KB (88%)      | +88%        |
+| **Content-addressed (v0.5)** | **52.9 KB (100%)** | **+100%**   |
 
 **Production results** (155 observations, deepseek-v4-pro):
 
-| Phase | S | U | D | Stable KB |
-|-------|---|---|---|-----------|
-| Pre-v0.5 (position-based) | 1 | 0 | 24 | ~2 KB |
+| Phase                        | S      | U     | D     | Stable KB   |
+| ---------------------------- | ------ | ----- | ----- | ----------- |
+| Pre-v0.5 (position-based)    | 1      | 0     | 24    | ~2 KB       |
 | **v0.5 (content-addressed)** | **25** | **0** | **0** | **52.9 KB** |
 
 ## 🔌 Supported Platforms
