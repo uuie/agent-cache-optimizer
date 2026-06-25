@@ -1,11 +1,38 @@
 ---
 name: agent-cache-status
-description: Show agent-cache-optimizer status — stability DBs, reordering stats, diagnostics. Trigger: /agent-cache-status
+description: "Show agent-cache-optimizer status - stability DBs, reordering stats, diagnostics. Trigger: /agent-cache-status in Claude Code or $agent-cache-optimizer:agent-cache-status in Codex."
 ---
 
 # Agent Cache Optimizer Status
 
 Show the current state of the agent-cache-optimizer plugin.
+
+## Claude Code and Codex Use
+
+Run the compact status command first:
+
+```bash
+agent-cache-optimizer status
+```
+
+If the package is not installed globally, run:
+
+```bash
+npx agent-cache-optimizer status
+```
+
+Summarize whether local optimizer data exists, total observations, per-scope
+observations, warm-cache hash count, and provider cache hit rate when
+cache metrics are present. Use `agent-cache-optimizer status --json` only when
+the user explicitly asks for machine-readable output, because JSON output may
+include detailed metric snapshots.
+
+If there is no data, explain that runtime prompt reordering currently runs
+through the OpenCode plugin. For Claude Code, use cache-friendly `CLAUDE.md`
+structure and Claude Code's `--exclude-dynamic-system-prompt-sections` flag when
+using the default system prompt. For Codex, keep stable repository instructions
+in `AGENTS.md` and avoid putting frequently changing session notes at the top of
+durable instruction files.
 
 ## Data Locations
 

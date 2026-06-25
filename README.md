@@ -57,6 +57,8 @@ entire system prompt from scratch, even though 70-90% of it hasn't changed.
 
 ## 🚀 Install
 
+### OpenCode
+
 ```json
 {
   "plugin": ["agent-cache-optimizer"]
@@ -72,14 +74,103 @@ opencode plugin agent-cache-optimizer --global
 
 **Restart OpenCode — done.** Zero config. Works immediately for DeepSeek, Anthropic, OpenAI, and any provider with prefix-match KV caching.
 
+### Claude Code
+
+Claude Code does not expose a runtime prompt-transform hook, so this package
+loads as a Claude Code companion plugin for status and cache-friendly prompt
+guidance rather than automatic system block reordering.
+
+From this checkout:
+
+```bash
+PLUGIN_DIR="$(pwd)"
+
+# Validate plugin metadata without starting a model session
+claude plugin validate "$PLUGIN_DIR"
+
+# Confirm Claude Code can see the session-only plugin
+claude --plugin-dir "$PLUGIN_DIR" plugin list
+claude --plugin-dir "$PLUGIN_DIR" plugin details agent-cache-optimizer
+
+# Start Claude Code with the plugin loaded for this session
+claude --plugin-dir "$PLUGIN_DIR"
+```
+
+Inside Claude Code, use `/agent-cache-status` to inspect local optimizer status.
+For cache-friendly Claude sessions, structure stable `CLAUDE.md` content first
+and use Claude Code's `--exclude-dynamic-system-prompt-sections` option when you
+are using the default system prompt.
+
+### Codex CLI
+
+Codex CLI loads reusable workflows as skills or plugins. This package ships a
+Codex plugin manifest and the `agent-cache-status` skill, so it can be exposed
+through a local Codex plugin marketplace during development.
+
+From this checkout:
+
+```bash
+PLUGIN_DIR="$(pwd)"
+MARKETPLACE_ROOT="${HOME}/.local/share/agent-cache-optimizer-codex"
+
+# Copy this plugin into a local Codex marketplace layout.
+mkdir -p "$MARKETPLACE_ROOT/plugins/agent-cache-optimizer"
+mkdir -p "$MARKETPLACE_ROOT/.agents/plugins"
+rsync -a --delete \
+  --exclude .git \
+  --exclude node_modules \
+  "$PLUGIN_DIR"/ "$MARKETPLACE_ROOT/plugins/agent-cache-optimizer"/
+
+cat > "$MARKETPLACE_ROOT/.agents/plugins/marketplace.json" <<'JSON'
+{
+  "name": "agent-cache-optimizer-local",
+  "interface": {
+    "displayName": "Agent Cache Optimizer Local"
+  },
+  "plugins": [
+    {
+      "name": "agent-cache-optimizer",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-cache-optimizer"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
+JSON
+
+# Register the marketplace and install the plugin.
+codex plugin marketplace add "$MARKETPLACE_ROOT"
+codex plugin add agent-cache-optimizer@agent-cache-optimizer-local
+
+# Confirm Codex installed and enabled it.
+codex plugin list --json
+```
+
+Inside Codex, invoke `$agent-cache-optimizer:agent-cache-status` or use
+`/skills` to select the skill. Start a new Codex thread after installing or
+updating the plugin so the skill list is refreshed.
+
 ### Verify
 
 ```bash
-# Check plugin is loaded
+# OpenCode: check plugin is loaded
 opencode debug config | grep agent-cache-optimizer
 
-# Watch reorder activity in real time
+# OpenCode: watch reorder activity in real time
 tail -f ~/.cache/opencode/agent-cache-optimizer/diag.log
+
+# Claude Code: inspect the session-only plugin
+claude --plugin-dir "$(pwd)" plugin details agent-cache-optimizer
+
+# Codex CLI: confirm the skill is visible in the prompt input
+codex debug prompt-input "Use agent-cache-optimizer status" \
+  | grep 'agent-cache-optimizer:agent-cache-status'
 ```
 
 ### Status dashboard
@@ -189,12 +280,12 @@ Tested on a realistic OpenCode orchestrator prompt (~25KB system prompt):
 
 ## 🔌 Supported Platforms
 
-| Platform        | Status        | Adapter                                            |
-| --------------- | ------------- | -------------------------------------------------- |
-| **OpenCode**    | ✅ Plugin     | `src/index.ts` (native)                            |
-| **Claude Code** | 📖 Guidelines | [adapters/claude-code.md](adapters/claude-code.md) |
-| **Codex**       | 🔜 Planned    | Adapt OpenCode plugin                              |
-| **Gemini CLI**  | 🔜 Planned    | Google context caching                             |
+| Platform        | Status                           | Adapter                                            |
+| --------------- | -------------------------------- | -------------------------------------------------- |
+| **OpenCode**    | ✅ Plugin                        | `src/index.ts` (native)                            |
+| **Claude Code** | ✅ Companion plugin + guidelines | [adapters/claude-code.md](adapters/claude-code.md) |
+| **Codex**       | ✅ Companion plugin + skill      | `.codex-plugin/plugin.json` + `skills/`            |
+| **Gemini CLI**  | 🔜 Planned                       | Google context caching                             |
 
 ## 🧩 API (standalone usage)
 

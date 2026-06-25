@@ -24,6 +24,18 @@ Anthropic's API caches prompts automatically. Key behaviors:
 
 ## Optimization Strategies for Claude Code
 
+### 0. CLI-level cache help
+
+When using Claude Code's default system prompt, add:
+
+```bash
+claude --exclude-dynamic-system-prompt-sections
+```
+
+This moves per-machine dynamic sections out of the default system prompt and
+into the first user message, which improves prompt-cache reuse for the stable
+system prefix. It is ignored when you provide a custom `--system-prompt`.
+
 ### 1. CLAUDE.md Structure (highest impact)
 
 ```markdown
@@ -110,10 +122,11 @@ echo "=== Done ==="
 
 ## Comparison: OpenCode Plugin vs Claude Code Approach
 
-| Metric | OpenCode Plugin | Claude Code Guidelines |
+| Metric | OpenCode Plugin | Claude Code Companion |
 |--------|----------------|----------------------|
-| Runtime reordering | ✅ automatic | ❌ not possible |
+| Runtime reordering | ✅ automatic | ❌ not exposed by Claude Code hooks |
 | Content-level fix | N/A (handled by reorder) | ✅ manual guidelines |
-| Cache hit improvement | 40-88% (measured) | 20-50% (estimated) |
-| Setup effort | 0 (plugin auto-loads) | Manual CLAUDE.md review |
+| CLI-level cache help | N/A | ✅ `--exclude-dynamic-system-prompt-sections` |
+| Cache hit improvement | 40-88% (measured) | Depends on project prompt structure |
+| Setup effort | 0 (plugin auto-loads) | Install/load companion plugin and review CLAUDE.md |
 | Maintenance | 0 (hash-based, self-learning) | Periodic validation |

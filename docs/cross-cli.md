@@ -53,9 +53,13 @@ content at the front busts everything.
 
 ### Codex (OpenAI)
 
-- Plugin API likely similar to OpenCode (both from AI SDK ecosystem)
-- Strategy: adapt OpenCode plugin once Codex plugin API is confirmed
-- OpenAI prompt caching uses similar prefix-match mechanism
+- Codex CLI supports repo/user skills and installable plugins through a plugin
+  marketplace
+- Current package ships a Codex companion plugin (`.codex-plugin/plugin.json`)
+  plus the `agent-cache-status` skill
+- No runtime system-prompt transform hook is used here; strategy is status
+  inspection plus cache-friendly prompt guidance
+- OpenAI prompt caching uses similar prefix-match mechanics
 
 ### Gemini CLI
 
@@ -85,5 +89,5 @@ Each adapter imports these and adds CLI-specific glue:
 1. [x] OpenCode plugin (V3: per-agent + block splitting + diagnostics)
 2. [ ] Extract shared core to `agent-cache-optimizer-core.ts`
 3. [ ] Claude Code pre-session validator
-4. [ ] Codex adapter (once API confirmed)
+4. [x] Codex companion plugin manifest + skill
 5. [ ] Gemini CLI adapter (Google context caching)

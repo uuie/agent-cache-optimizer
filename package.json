@@ -35,10 +35,13 @@
     "./splitting": "./src/splitting.ts"
   },
   "files": [
+    ".codex-plugin/",
+    ".claude-plugin/",
     "bin/",
     "src/",
     "adapters/",
     "scripts/",
+    "skills/",
     "docs/",
     "README.md",
     "README.zh-CN.md",

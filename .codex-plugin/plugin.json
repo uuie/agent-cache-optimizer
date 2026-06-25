@@ -1,0 +1,36 @@
+{
+  "name": "agent-cache-optimizer",
+  "version": "0.6.0",
+  "description": "Codex companion for cache-friendly agent prompts, local optimizer status, and prompt-cache guidance.",
+  "author": {
+    "name": "Chris",
+    "url": "https://github.com/chris"
+  },
+  "repository": "https://github.com/uuie/agent-cache-optimizer",
+  "license": "MIT",
+  "keywords": [
+    "prompt-caching",
+    "kv-cache",
+    "codex",
+    "claude-code",
+    "opencode",
+    "llm"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Agent Cache Optimizer",
+    "shortDescription": "Inspect optimizer status and keep Codex prompts cache-friendly.",
+    "longDescription": "Agent Cache Optimizer helps Codex users inspect local cache-optimizer status, understand current OpenCode prompt-reordering data, and apply cache-friendly prompt structure guidance for Codex CLI sessions.",
+    "developerName": "Chris",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "defaultPrompt": [
+      "Show agent-cache-optimizer status.",
+      "Review this repo for cache-friendly Codex setup."
+    ],
+    "brandColor": "#10A37F"
+  }
+}

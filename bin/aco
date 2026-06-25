@@ -8,6 +8,9 @@ CMD="${1:-help}"
 
 # ── Colors ────────────────────────────────────────────────────────
 BOLD='\033[1m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
+if [[ ! -t 1 || -n "${NO_COLOR:-}" ]]; then
+  BOLD=''; GREEN=''; YELLOW=''; RED=''; CYAN=''; NC=''
+fi
 
 # ── status ────────────────────────────────────────────────────────
 status_json() {
@@ -131,25 +134,28 @@ status_text() {
   echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
 
   if [[ $diag_entries -gt 0 ]]; then
-    echo -e "║ ${GREEN}Status: ACTIVE${NC}                                           ║"
-    printf "║ Uptime: %-46s ║\n" "$first_ts → $last_ts"
+    printf "║ ${GREEN}%-53s${NC} ║\n" "Status: ACTIVE"
+    printf "║ %-53s ║\n" "First seen: $first_ts"
+    printf "║ %-53s ║\n" "Last seen:  $last_ts"
   else
-    echo -e "║ ${YELLOW}Status: LOADED (no activity yet)${NC}                        ║"
+    printf "║ ${YELLOW}%-53s${NC} ║\n" "Status: LOADED (no activity yet)"
   fi
 
   echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
 
   if [[ $event_entries -gt 0 ]]; then
-    printf "║ ${CYAN}Structured events: ${event_entries} jsonl records${NC}                  ║\n"
+    printf "║ ${CYAN}%-53s${NC} ║\n" "Structured events: ${event_entries} jsonl records"
   fi
 
   if [[ $agent_count -eq 0 ]]; then
     echo -e "║ ${YELLOW}No per-agent data yet${NC}                                    ║"
   else
-    printf "║ ${CYAN}%-22s %5s %8s %9s${NC} ║\n" "Agent" "Obs" "Pos" "Stable"
+    local table_header
+    printf -v table_header "%-22s %5s %8s %9s" "Agent" "Obs" "Pos" "Stable"
+    printf "║ ${CYAN}%-53s${NC} ║\n" "$table_header"
     for db in "$CACHE_DIR"/stability-*.json; do
       [[ -f "$db" ]] || continue
-      local agent obs pos stable
+      local agent obs pos stable table_row
       agent=$(basename "$db" .json | sed 's/^stability-//')
       obs=$(python3 -c "import json; d=json.load(open('$db')); print(d.get('observations', 0))" 2>/dev/null || echo 0)
       pos=$(python3 -c "import json; d=json.load(open('$db')); print(len(d.get('positions', {})))" 2>/dev/null || echo 0)
@@ -162,7 +168,12 @@ if scores:
     print(f'{s}/{len(scores)}')
 else:
     print('0/0')" 2>/dev/null || echo "0/0")
-      printf "║ %-22s %5s %8s %9s ║\n" "$agent" "$obs" "$pos" "$stable"
+      local agent_display="$agent"
+      if [[ ${#agent_display} -gt 22 ]]; then
+        agent_display="${agent_display:0:19}..."
+      fi
+      printf -v table_row "%-22s %5s %8s %9s" "$agent_display" "$obs" "$pos" "$stable"
+      printf "║ %-53s ║\n" "$table_row"
     done
   fi
 
@@ -174,13 +185,13 @@ else:
     saved=$(python3 -c "
 import json
 d=json.load(open('$CACHE_DIR/savings.json'))
-print(f\"\${d.get('estimatedSavingsUSD', 0):.6f}\")" 2>/dev/null || echo "0")
+print(f\"{d.get('estimatedSavingsUSD', 0):.6f}\")" 2>/dev/null || echo "0")
     local total_obs
     total_obs=$(python3 -c "
 import json
 d=json.load(open('$CACHE_DIR/savings.json'))
 print(d.get('totalObservations', 0))" 2>/dev/null || echo "0")
-    printf "║ ${CYAN}Est. savings: \$${saved} over ${total_obs} calls${NC}               ║\n"
+    printf "║ ${CYAN}%-53s${NC} ║\n" "Est. savings: \$${saved} over ${total_obs} calls"
   fi
 
   # Warm cache
@@ -194,13 +205,13 @@ if isinstance(d, dict):
     for values in d.get('scopes', {}).values():
         hashes.update(values)
 print(len(hashes))" 2>/dev/null || echo "0")
-    printf "║ ${CYAN}Warm cache: ${warm_count} stable hashes pinned${NC}                      ║\n"
+    printf "║ ${CYAN}%-53s${NC} ║\n" "Warm cache: ${warm_count} stable hashes pinned"
   fi
 
   # Real provider cache metrics from OpenCode events
   if [[ -f "$CACHE_DIR/cache-metrics.json" ]]; then
-    local metrics_line
-    metrics_line=$(python3 -c "
+    local metrics_lines
+    metrics_lines=$(python3 -c "
 import json
 d=json.load(open('$CACHE_DIR/cache-metrics.json')).get('total', {})
 read=int(d.get('cacheReadTokens', 0))
@@ -208,14 +219,17 @@ write=int(d.get('cacheWriteTokens', 0))
 inp=int(d.get('inputTokens', 0))
 rate=float(d.get('cacheHitRate', 0)) * 100
 events=int(d.get('events', 0))
-print(f'Cache hit: {rate:.1f}% ({read}/{inp} input tokens, write {write}, events {events})')" 2>/dev/null || echo "")
-    if [[ -n "$metrics_line" ]]; then
-      printf "║ ${CYAN}%-53s${NC} ║\n" "$metrics_line"
+print(f'Cache hit: {rate:.1f}% over {events} events')
+print(f'Tokens: read {read}, input {inp}, write {write}')" 2>/dev/null || echo "")
+    if [[ -n "$metrics_lines" ]]; then
+      while IFS= read -r metrics_line; do
+        [[ -n "$metrics_line" ]] && printf "║ ${CYAN}%-53s${NC} ║\n" "$metrics_line"
+      done <<< "$metrics_lines"
     fi
   fi
 
   if [[ $diag_entries -gt 0 ]]; then
-    echo -e "║ ${CYAN}Last reorder:${NC}                                           ║"
+    printf "║ ${CYAN}%-53s${NC} ║\n" "Last reorder:"
     tail -1 "$CACHE_DIR/diag.log" 2>/dev/null | while IFS= read -r line; do
       printf "║   %-52s ║\n" "${line:0:52}"
     done
