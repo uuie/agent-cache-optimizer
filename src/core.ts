@@ -24,6 +24,7 @@ export function emptyDB(): StabilityDB {
     scores: {},
     contentIndex: {},
     contentScores: {},
+    contentObservations: 0,
     observations: 0,
     updated: 0,
   }
@@ -71,9 +72,11 @@ export function updateContentDB(db: StabilityDB, blocks: string[]): StabilityDB 
     }
   }
 
-  // Recompute content scores
+  // Recompute content scores using contentObservations (not observations)
+  db.contentObservations++
+  const obs = Math.max(1, db.contentObservations)
   for (const fp of Object.values(db.contentIndex)) {
-    db.contentScores[fp.hash] = Math.min(1.0, fp.count / Math.max(1, db.observations))
+    db.contentScores[fp.hash] = Math.min(1.0, fp.count / obs)
   }
 
   return db

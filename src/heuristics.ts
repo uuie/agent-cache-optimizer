@@ -78,7 +78,7 @@ export function classify(
 
     // Priority 2: content-addressed score (primary)
     const contentScore = lookupContentScore(db, hash)
-    if (contentScore !== null && db.observations >= 2) {
+    if (contentScore !== null && db.contentObservations >= 2) {
       if (contentScore >= 0.7) { result.stable.push(item); continue }
       if (contentScore <= 0.2) { result.dynamic.push(item); continue }
     }

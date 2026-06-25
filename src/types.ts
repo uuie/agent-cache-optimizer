@@ -24,6 +24,8 @@ export interface StabilityDB {
   contentIndex: Record<string, ContentFingerprint>
   /** Content-addressed scores */
   contentScores: Record<string, number>
+  /** Number of calls that contributed to contentIndex */
+  contentObservations: number
   /** Total observations */
   observations: number
   /** Last write timestamp */

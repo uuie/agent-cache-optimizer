@@ -37,7 +37,31 @@ function warmCachePath(): string {
 
 function loadDB(agent: string): StabilityDB {
   try {
-    return JSON.parse(readFileSync(dbPath(agent), "utf-8")) as StabilityDB
+    const raw = readFileSync(dbPath(agent), "utf-8")
+    const db = JSON.parse(raw) as StabilityDB
+    // Migrate from pre-0.5.0: rebuild contentIndex from position data
+    if (
+      (!db.contentIndex || Object.keys(db.contentIndex).length === 0) &&
+      db.positions &&
+      Object.keys(db.positions).length > 0
+    ) {
+      db.contentIndex = {}
+      for (const fps of Object.values(db.positions)) {
+        for (const fp of fps) {
+          const existing = db.contentIndex[fp.hash]
+          if (existing) {
+            existing.count = Math.max(existing.count, fp.count)
+            if (fp.lastSeen > existing.lastSeen) existing.lastSeen = fp.lastSeen
+          } else {
+            db.contentIndex[fp.hash] = { ...fp }
+          }
+        }
+      }
+      db.contentScores = {}
+      db.contentObservations = 0 // warm from scratch for accurate scores
+      saveDB(agent, db)
+    }
+    return db
   } catch {
     return emptyDB()
   }
