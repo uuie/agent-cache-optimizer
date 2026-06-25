@@ -96,15 +96,17 @@ agent-cache-optimizer status --json    # JSON for scripts
 ║              KV Cache Optimizer Status                       ║
 ╠══════════════════════════════════════════════════════════════╣
 ║ Status:  ACTIVE                                              ║
-║ Mode:    orchestrator=WARM oracle=COLD                        ║
-║ Uptime:  2026-06-24T15:30 → 2026-06-24T16:45                ║
+║ Mode:    WARM (12 scopes, 150 observations)                  ║
+║ Uptime:  2026-06-24T15:30 → 2026-06-25T16:45                ║
+║ Structured events: 1267 jsonl records                        ║
 ╠══════════════════════════════════════════════════════════════╣
-║ Agent              Obs  Positions     Stable                 ║
-║ orchestrator        12         11      8/11                  ║
-║ oracle               3          5      3/5                   ║
+║ Scope                              Obs  Positions  Stable    ║
+║ deepseek__deepseek-chat__orch       12         25   25/25    ║
+║ deepseek__deepseek-chat__oracle      3          5    5/5     ║
 ╠══════════════════════════════════════════════════════════════╣
 ║ Est. savings: $1.2345 over 50 calls                         ║
-║ Warm cache: 25 stable hashes pinned                          ║
+║ Warm cache: 52 stable hashes pinned (18 global + 34 scoped) ║
+║ Cache hit: 96.4% (29952/31061 input tokens)                 ║
 ║ Last reorder: S:25 U:0 D:0 T:25 obs:150                     ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -128,7 +130,15 @@ After 3 observations:
   ...
 ```
 
-### 2. Classify & Reorder
+### 2. Split & Classify
+
+Large blocks (>4KB) are split at structural boundaries — JSON arrays,
+Markdown headings, XML elements, and long lists — using a robust
+brace-depth parser that handles arbitrary nesting and fenced code blocks.
+
+Cold-start heuristics detect volatile metadata patterns (`currentDate`,
+`session ID`, `timestamp`) and cap their scores to prevent structural
+boosts from misclassifying them as stable.
 
 ```
                                                                   ┌──────────┐
@@ -146,12 +156,19 @@ After 3 observations:
 
 | Phase          | Trigger                 | Method                                       |
 | -------------- | ----------------------- | -------------------------------------------- |
-| **Cold start** | First 2 calls per agent | Universal position/size/structure heuristics |
+| **Cold start** | First 2 calls per scope | Universal position/size/structure heuristics |
 | **Warm**       | 3+ calls                | Hash-based stability scores                  |
 
 The cold-start heuristics use **only** structural signals (position, size,
 delimiters, line density) — no keyword matching, no config awareness.
 This means the plugin works immediately with **any** agent setup.
+
+### 4. Provider Cache Metrics
+
+Real cache hit rates are tracked from OpenCode provider events — no
+estimation needed. `cache-metrics.json` records per-scope and
+total `cacheReadTokens`, `cacheWriteTokens`, and `cacheHitRate`.
+All session and message IDs are content-hashed for privacy.
 
 ## 📊 Benchmarks
 
@@ -206,8 +223,11 @@ agent-cache-optimizer/
 │   ├── index.ts          # OpenCode plugin entry
 │   ├── core.ts           # Content-addressed hash engine
 │   ├── heuristics.ts     # Cold-start + content classifiers
-│   ├── splitting.ts      # Large block splitter
-│   └── types.ts          # TypeScript types
+│   ├── splitting.ts      # Large block splitter (brace-depth parser)
+│   ├── types.ts          # TypeScript types
+│   └── __tests__/        # Unit tests (vitest)
+│       ├── plugin.test.ts
+│       └── heuristics-splitting.test.ts
 ├── adapters/
 │   ├── claude-code.md    # Claude Code optimization guide
 │   └── conversation-log.md # Append-only log guidelines

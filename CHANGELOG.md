@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.6.0 — 2026-06-25
+
+### Added
+- **Model-scoped tracking**: databases and warm caches are now keyed by `provider__model__agent` instead of just agent name, enabling correct per-provider/model stability tracking across multi-model setups
+- **Block splitting v2**: robust brace-depth JSON parser handles arbitrary nesting, escaped strings, consecutive objects (not just arrays), and XML sibling elements. Markdown section splitting respects fenced code blocks. Long top-level lists (3+ items) are split into individual items.
+- **Volatile metadata detection**: cold-start heuristics now detect and cap blocks containing dynamic meta-info patterns (`currentDate`, `session ID`, `timestamp`, `last updated`, `ISO timestamp`) even when structural heuristics would otherwise boost them to stable
+- **Provider cache metrics**: real cache hit rate tracking from OpenCode provider events (`cacheReadTokens`, `cacheWriteTokens`, `cacheHitRate`) stored in `cache-metrics.json` with per-scope and total aggregation
+- **Structured event logging**: all significant events written to `events.jsonl` with content-hashed IDs for privacy-preserving observability
+- **Enhanced CLI**: `agent-cache-optimizer status` now displays cache hit rate, structured event counts, and properly handles scoped warm cache format
+
+### Changed
+- **Two-tier classification**: simplified from 3 tiers (stable/unknown/dynamic) to 2 tiers (stable/dynamic) with 0.5 threshold, effectively eliminating the "unknown" bucket
+- **Warm cache v2**: upgraded format with `global` + per-scope hash sets; hashes stable across multiple scopes are promoted to global for cross-scope cache warming
+- **Warm cache durability**: hashes persist across sessions unless absent from ALL scopes (not just removed on first scope change)
+- **Content-addressable snapshot keys**: session and item IDs in cache metrics are content-hashed to avoid leaking sensitive identifiers
+- Cold-start classification now routes 0.5-score blocks to stable instead of unknown
+
+### Fixed
+- Cumulative savings no longer double-counted (was multiplying by observation count twice)
+- Metrics deduplication: zero-delta provider events are skipped after the first recording
+
 ## 0.5.4 — 2026-06-25
 
 ### Added

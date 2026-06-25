@@ -38,7 +38,37 @@ export function coldStartScore(block: string, index: number, total: number): num
   const avgLineLen = block.length / Math.max(1, lines.length)
   if (lines.length > 15 && avgLineLen < 30) score = Math.min(score, 0.3)
 
+  const cap = volatileMetadataCap(block)
+  if (cap !== null) score = Math.min(score, cap)
+
   return score
+}
+
+/**
+ * Dynamic meta-info / structural patterns.
+ *
+ * Run this as a final cap so structured boosts cannot move volatile metadata
+ * back into the stable prefix.
+ */
+function volatileMetadataCap(block: string): number | null {
+  const dynamicPatterns = [
+    { re: /(^|\n)\s*["']?(currentDate|current date)["']?\s*[:=]/i, cap: 0.15 },
+    { re: /["'](currentDate|current date)["']\s*[:=]/i, cap: 0.15 },
+    { re: /(^|\n)\s*today is\b/i, cap: 0.15 },
+    {
+      re: /(^|\n)\s*["']?(session\s*id|session|timestamp|last updated|iso timestamp)["']?\s*[:=]/i,
+      cap: 0.25,
+    },
+    {
+      re: /["'](session\s*id|session|timestamp|last updated|iso timestamp)["']\s*[:=]/i,
+      cap: 0.25,
+    },
+  ]
+  let cap: number | null = null
+  for (const { re, cap: nextCap } of dynamicPatterns) {
+    if (re.test(block)) cap = cap === null ? nextCap : Math.min(cap, nextCap)
+  }
+  return cap
 }
 
 // ── Classification ───────────────────────────────────────────────────
@@ -79,11 +109,18 @@ export function classify(
     // Priority 2: content-addressed score (primary)
     const contentScore = lookupContentScore(db, hash)
     if (contentScore !== null && db.contentObservations >= 2) {
-      if (contentScore >= 0.7) { result.stable.push(item); continue }
-      if (contentScore <= 0.2) { result.dynamic.push(item); continue }
+      if (contentScore >= 0.7) {
+        result.stable.push(item)
+        continue
+      }
+      if (contentScore <= 0.2) {
+        result.dynamic.push(item)
+        continue
+      }
+      // Middle range (0.2–0.7): fall through to cold-start for tiered classification
     }
 
-    // Priority 3: position-based score (fallback)
+    // Priority 3: position-based score (fallback) or cold-start heuristic
     const known = lookupScore(db, hash)
     let score: number
     if (known !== null && warm) {
@@ -92,9 +129,9 @@ export function classify(
       score = coldStartScore(item, i, total)
     }
 
-    if (score >= 0.7) result.stable.push(item)
-    else if (score <= 0.3) result.dynamic.push(item)
-    else result.unknown.push(item)
+    // Tiered classification: 0.5 threshold reduces unknown to near-empty
+    if (score >= 0.5) result.stable.push(item)
+    else result.dynamic.push(item)
   }
 
   return result

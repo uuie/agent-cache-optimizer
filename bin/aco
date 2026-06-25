@@ -38,6 +38,9 @@ print(json.dumps(agents))" 2>/dev/null || echo "$agents_json")
   local diag_entries=0
   [[ -f "$CACHE_DIR/diag.log" ]] && diag_entries=$(wc -l < "$CACHE_DIR/diag.log" | tr -d ' ')
 
+  local event_entries=0
+  [[ -f "$CACHE_DIR/events.jsonl" ]] && event_entries=$(wc -l < "$CACHE_DIR/events.jsonl" | tr -d ' ')
+
   local total_obs=0
   for db in "$CACHE_DIR"/stability-*.json; do
     [[ -f "$db" ]] || continue
@@ -46,9 +49,6 @@ print(json.dumps(agents))" 2>/dev/null || echo "$agents_json")
     total_obs=$((total_obs + o))
   done
 
-  local status="no_data"
-  [[ $diag_entries -gt 0 ]] && status="active"
-
   local savings_json="{}"
   if [[ -f "$CACHE_DIR/savings.json" ]]; then
     savings_json=$(python3 -c "import json; print(json.dumps(json.load(open('$CACHE_DIR/savings.json'))))" 2>/dev/null || echo "{}")
@@ -56,7 +56,29 @@ print(json.dumps(agents))" 2>/dev/null || echo "$agents_json")
 
   local warm_count=0
   if [[ -f "$CACHE_DIR/warm-cache.json" ]]; then
-    warm_count=$(python3 -c "import json; print(len(json.load(open('$CACHE_DIR/warm-cache.json'))))" 2>/dev/null || echo 0)
+    warm_count=$(python3 -c "
+import json
+d=json.load(open('$CACHE_DIR/warm-cache.json'))
+hashes=set(d if isinstance(d, list) else d.get('global', []))
+if isinstance(d, dict):
+    for values in d.get('scopes', {}).values():
+        hashes.update(values)
+print(len(hashes))" 2>/dev/null || echo 0)
+  fi
+
+  local cache_metrics_json="{}"
+  if [[ -f "$CACHE_DIR/cache-metrics.json" ]]; then
+    cache_metrics_json=$(python3 -c "import json; print(json.dumps(json.load(open('$CACHE_DIR/cache-metrics.json'))))" 2>/dev/null || echo "{}")
+  fi
+
+  local metric_events=0
+  if [[ -f "$CACHE_DIR/cache-metrics.json" ]]; then
+    metric_events=$(python3 -c "import json; print(json.load(open('$CACHE_DIR/cache-metrics.json')).get('total', {}).get('events', 0))" 2>/dev/null || echo 0)
+  fi
+
+  local status="no_data"
+  if [[ $diag_entries -gt 0 || $total_obs -gt 0 || $metric_events -gt 0 ]]; then
+    status="active"
   fi
 
   python3 -c "
@@ -64,10 +86,12 @@ import json
 print(json.dumps({
   'status': '$status',
   'diag_entries': $diag_entries,
+  'event_entries': $event_entries,
   'total_observations': $total_obs,
   'agents': $agents_json,
   'savings': $savings_json,
-  'warm_cache_hashes': $warm_count
+  'warm_cache_hashes': $warm_count,
+  'cache_metrics': $cache_metrics_json
 }, indent=2))"
 }
 
@@ -98,6 +122,9 @@ status_text() {
     last_ts=$(tail -1 "$CACHE_DIR/diag.log" | grep -oP '^\[[^\]]+\]' | tr -d '[]' 2>/dev/null || echo "?")
   fi
 
+  local event_entries=0
+  [[ -f "$CACHE_DIR/events.jsonl" ]] && event_entries=$(wc -l < "$CACHE_DIR/events.jsonl" | tr -d ' ')
+
   echo ""
   echo -e "${BOLD}╔══════════════════════════════════════════════════════╗${NC}"
   echo -e "${BOLD}║           agent-cache-optimizer Status               ║${NC}"
@@ -111,6 +138,10 @@ status_text() {
   fi
 
   echo -e "${BOLD}╠══════════════════════════════════════════════════════╣${NC}"
+
+  if [[ $event_entries -gt 0 ]]; then
+    printf "║ ${CYAN}Structured events: ${event_entries} jsonl records${NC}                  ║\n"
+  fi
 
   if [[ $agent_count -eq 0 ]]; then
     echo -e "║ ${YELLOW}No per-agent data yet${NC}                                    ║"
@@ -155,8 +186,32 @@ print(d.get('totalObservations', 0))" 2>/dev/null || echo "0")
   # Warm cache
   if [[ -f "$CACHE_DIR/warm-cache.json" ]]; then
     local warm_count
-    warm_count=$(python3 -c "import json; print(len(json.load(open('$CACHE_DIR/warm-cache.json'))))" 2>/dev/null || echo "0")
+    warm_count=$(python3 -c "
+import json
+d=json.load(open('$CACHE_DIR/warm-cache.json'))
+hashes=set(d if isinstance(d, list) else d.get('global', []))
+if isinstance(d, dict):
+    for values in d.get('scopes', {}).values():
+        hashes.update(values)
+print(len(hashes))" 2>/dev/null || echo "0")
     printf "║ ${CYAN}Warm cache: ${warm_count} stable hashes pinned${NC}                      ║\n"
+  fi
+
+  # Real provider cache metrics from OpenCode events
+  if [[ -f "$CACHE_DIR/cache-metrics.json" ]]; then
+    local metrics_line
+    metrics_line=$(python3 -c "
+import json
+d=json.load(open('$CACHE_DIR/cache-metrics.json')).get('total', {})
+read=int(d.get('cacheReadTokens', 0))
+write=int(d.get('cacheWriteTokens', 0))
+inp=int(d.get('inputTokens', 0))
+rate=float(d.get('cacheHitRate', 0)) * 100
+events=int(d.get('events', 0))
+print(f'Cache hit: {rate:.1f}% ({read}/{inp} input tokens, write {write}, events {events})')" 2>/dev/null || echo "")
+    if [[ -n "$metrics_line" ]]; then
+      printf "║ ${CYAN}%-53s${NC} ║\n" "$metrics_line"
+    fi
   fi
 
   if [[ $diag_entries -gt 0 ]]; then
