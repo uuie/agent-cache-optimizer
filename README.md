@@ -1,16 +1,29 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/agent-cache-optimizer"><img src="https://img.shields.io/npm/v/agent-cache-optimizer" alt="npm version"></a>
   <img src="https://img.shields.io/badge/platform-OpenCode-blue" alt="OpenCode">
+  <img src="https://img.shields.io/badge/CLI-Claude%20Code%20%7C%20Codex%20%7C%20Gemini-orange" alt="Multi-CLI">
+  <img src="https://img.shields.io/badge/providers-DeepSeek%20%7C%20Anthropic%20%7C%20OpenAI-purple" alt="DeepSeek Anthropic OpenAI">
   <img src="https://img.shields.io/badge/cache%20gain-40–88%25-brightgreen" alt="Cache gain 40-88%">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
   <img src="https://img.shields.io/badge/deps-zero-blue" alt="Zero dependencies">
 </p>
 
 <h1 align="center">🧠 agent-cache-optimizer</h1>
-<p align="center"><strong>Content-agnostic KV cache optimizer for LLM CLI agents</strong></p>
+<p align="center"><strong>OpenCode plugin for LLM prompt caching, token savings, and KV cache reuse</strong></p>
+<p align="center">Automatically reorders stable system prompt blocks so DeepSeek, Anthropic, OpenAI, and other prefix-cache providers can reuse more cache across agent sessions.</p>
 <p align="center">Boost prompt cache hit rates by <strong>40–88%</strong>.<br>Zero config. Zero content knowledge. Works with <em>any</em> agent framework.</p>
+<p align="center"><strong>English</strong> | <a href="README.zh-CN.md">中文</a></p>
 
 ---
+
+## 👤 Who needs this?
+
+Use this if your CLI agent has large system prompts, MCP tools, skills,
+`CLAUDE.md` files, handoff memory, or frequently changing context blocks.
+
+Typical users run OpenCode, Claude Code, Codex CLI, Gemini CLI, or custom LLM
+agents and want higher prompt cache hit rates, fewer recomputed input tokens,
+and lower API cost.
 
 ## 🎯 The Problem
 
@@ -277,6 +290,29 @@ Tested on a realistic OpenCode orchestrator prompt (~25KB system prompt):
 | ---------------------------- | ------ | ----- | ----- | ----------- |
 | Pre-v0.5 (position-based)    | 1      | 0     | 24    | ~2 KB       |
 | **v0.5 (content-addressed)** | **25** | **0** | **0** | **52.9 KB** |
+
+### v0.6.1 real-world DeepSeek run (2026-06-26)
+
+The `v0.6.1` tag documents provider-reported cache metrics from a local
+OpenCode run, filtered with the same command used during testing:
+
+```bash
+cat ~/.cache/opencode/agent-cache-optimizer/diag.log \
+  | grep hit \
+  | grep 2026-06-26 \
+  | grep deepseek__deepseek
+```
+
+The filtered run contained **309 cache-hit metric samples**:
+
+| Scope                              | Samples | Hit rate observed | Latest metric                                             |
+| ---------------------------------- | ------- | ----------------- | --------------------------------------------------------- |
+| `deepseek-v4-pro` / `orchestrator` | 86      | 98.0-98.3%        | 98.1% hit rate, 39,084,800 cache-read tokens              |
+| `deepseek-v4-flash` / `fixer`      | 196     | 86.1-99.2%        | 99.0% hit rate, 21,218,432 cache-read tokens              |
+| `deepseek-v4-flash` / `explorer`   | 27      | 0.0-90.3%         | 90.3% hit rate after warm-up, 1,229,696 cache-read tokens |
+
+The `explorer` scope shows cold-start behavior: the first sample was 0.0%
+before the provider cache warmed, and later samples reached 90%+ hit rate.
 
 ## 🔌 Supported Platforms
 

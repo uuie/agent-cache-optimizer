@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 — 2026-06-26
+
+### Changed
+
+- Improved README discoverability with clearer first-screen positioning, provider badges, bilingual links, and "Who needs this?" guidance
+- Added real-world DeepSeek cache-hit results from OpenCode diagnostics
+- Expanded npm metadata keywords for prompt caching, token optimization, and LLM agent search terms
+
 ## 0.6.0 — 2026-06-25
 
 ### Added

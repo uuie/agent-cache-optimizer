@@ -1,16 +1,28 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-OpenCode-blue" alt="OpenCode">
   <img src="https://img.shields.io/badge/CLI-Claude%20Code%20%7C%20Codex%20%7C%20Gemini-orange" alt="Multi-CLI">
+  <img src="https://img.shields.io/badge/providers-DeepSeek%20%7C%20Anthropic%20%7C%20OpenAI-purple" alt="DeepSeek Anthropic OpenAI">
   <img src="https://img.shields.io/badge/cache%20增益-40–88%25-brightgreen" alt="Cache gain 40-88%">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT">
   <img src="https://img.shields.io/badge/依赖-零-blue" alt="Zero dependencies">
 </p>
 
 <h1 align="center">🧠 agent-cache-optimizer</h1>
-<p align="center"><strong>内容无关的 KV Cache 优化器，适用于 LLM CLI Agent</strong></p>
+<p align="center"><strong>用于 LLM prompt caching、token 节省和 KV cache 复用的 OpenCode 插件</strong></p>
+<p align="center">自动重排稳定的 system prompt blocks，让 DeepSeek、Anthropic、OpenAI 等前缀缓存 provider 在 Agent 会话之间复用更多缓存。</p>
 <p align="center">提升 prompt cache 命中率 <strong>40–88%</strong><br>零配置 · 零内容依赖 · 适用于任何 Agent 框架</p>
+<p align="center"><a href="README.md">English</a> | <strong>中文</strong></p>
 
 ---
+
+## 👤 谁适合使用？
+
+如果你的 CLI Agent 有大型 system prompt、MCP tools、skills、`CLAUDE.md`、
+handoff memory，或者经常变化的上下文块，这个插件适合你。
+
+典型用户会运行 OpenCode、Claude Code、Codex CLI、Gemini CLI 或自定义 LLM
+Agent，并希望提升 prompt cache 命中率、减少重复计算的 input tokens、降低 API
+成本。
 
 ## 🎯 问题
 
@@ -148,6 +160,28 @@ bash scriptsagent-cache-optimizer status.sh
 | 原始（无重排）          | 0 KB (0%)     | —    |
 | 冷启动（启发式）        | 21.8 KB (88%) | +88% |
 | 热状态（哈希，3+ 会话） | 21.8 KB (88%) | +88% |
+
+### v0.6.1 真实 DeepSeek 运行结果（2026-06-26）
+
+`v0.6.1` tag 记录了本地 OpenCode 运行中的 provider 上报缓存指标，测试时使用的过滤命令为：
+
+```bash
+cat ~/.cache/opencode/agent-cache-optimizer/diag.log \
+  | grep hit \
+  | grep 2026-06-26 \
+  | grep deepseek__deepseek
+```
+
+过滤后共有 **309 条 cache hit 指标样本**：
+
+| Scope                              | 样本数 | 观测命中率 | 最新指标                                         |
+| ---------------------------------- | ------ | ---------- | ------------------------------------------------ |
+| `deepseek-v4-pro` / `orchestrator` | 86     | 98.0-98.3% | 98.1% 命中率，39,084,800 cache-read tokens       |
+| `deepseek-v4-flash` / `fixer`      | 196    | 86.1-99.2% | 99.0% 命中率，21,218,432 cache-read tokens       |
+| `deepseek-v4-flash` / `explorer`   | 27     | 0.0-90.3%  | 预热后 90.3% 命中率，1,229,696 cache-read tokens |
+
+其中 `explorer` scope 展示了冷启动效果：第一条样本为 0.0%，provider cache
+预热后提升到 90%+ 命中率。
 
 ## 🔌 支持的平台
 
