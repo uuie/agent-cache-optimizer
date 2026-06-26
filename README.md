@@ -10,28 +10,21 @@
 
 <h1 align="center">🧠 agent-cache-optimizer</h1>
 <p align="center"><strong>OpenCode plugin for LLM prompt caching, token savings, and KV cache reuse</strong></p>
-<p align="center">Automatically reorders stable system prompt blocks so DeepSeek, Anthropic, OpenAI, and other prefix-cache providers can reuse more cache across agent sessions.</p>
-<p align="center">Boost prompt cache hit rates by <strong>40–88%</strong>.<br>Zero config. Zero content knowledge. Works with <em>any</em> agent framework.</p>
+<p align="center">Stops prompt-cache busting when agent sessions change across agents, providers, models, projects, and workspaces.</p>
+<p align="center">Stable system blocks go first. Volatile handoff, memory, date, and workspace state go later.</p>
+<p align="center">Boost prompt cache hit rates by <strong>40–88%</strong>.<br>Zero config for OpenCode. Zero content knowledge. CLI-agnostic core.</p>
 <p align="center"><strong>English</strong> | <a href="README.zh-CN.md">中文</a></p>
 
 ---
 
-## 👤 Who needs this?
+## 🎯 What problem does it solve?
 
-Use this if your CLI agent has large system prompts, MCP tools, skills,
-`CLAUDE.md` files, handoff memory, or frequently changing context blocks.
+LLM providers such as DeepSeek, Anthropic, OpenAI, and Google use
+**prefix-match KV caching**: the beginning of the prompt must match a previous
+request before the provider can reuse cached key-value states.
 
-Typical users run OpenCode, Claude Code, Codex CLI, Gemini CLI, or custom LLM
-agents and want higher prompt cache hit rates, fewer recomputed input tokens,
-and lower API cost.
-
-## 🎯 The Problem
-
-LLM providers (DeepSeek, Anthropic, OpenAI, Google) use **prefix-match KV caching**:
-if your prompt starts with the same bytes as a previous request, the computed
-key-value states are reused — cache hits cost near-zero tokens.
-
-**But every CLI agent puts dynamic content at the FRONT of the system prompt:**
+Agent prompts usually have the opposite shape. Dynamic state is injected first,
+while stable but expensive blocks come later:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -48,6 +41,20 @@ key-value states are reused — cache hits cost near-zero tokens.
 
 **Result: 0% cache reuse across sessions.** Every session recomputes the
 entire system prompt from scratch, even though 70-90% of it hasn't changed.
+
+This gets worse in real agent workflows:
+
+| Scenario                             | What breaks the prefix cache                                       | What this project does                                                 |
+| ------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Multi-agent runs                     | Planner/fixer/explorer handoffs change before shared rules         | Tracks stability per `provider__model__agent` scope                    |
+| Multi-provider/model routing         | DeepSeek, Anthropic, OpenAI, and model variants warm differently   | Keeps scoped cache metrics and warm hashes instead of one global guess |
+| Project/workspace/worktree switching | Repo paths, memories, dates, and workspace context move around     | Moves stable repo/tool/agent blocks before volatile workspace state    |
+| Large MCP/tool/skill prompts         | Huge static tool schemas are recomputed when dynamic text is first | Splits large blocks and pins stable hashes near the front              |
+| Handoff and memory-heavy sessions    | Conversation state changes every task                              | Keeps handoff/memory useful but moves it after cacheable blocks        |
+
+It does **not** compress prompts, summarize instructions, or read prompt
+content. It only hashes system blocks, learns which blocks are stable, and
+reorders them so provider prefix caching can work.
 
 ## 💡 The Fix
 
@@ -193,27 +200,8 @@ agent-cache-optimizer status           # text dashboard
 agent-cache-optimizer status --json    # JSON for scripts
 ```
 
-### Output
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║              KV Cache Optimizer Status                       ║
-╠══════════════════════════════════════════════════════════════╣
-║ Status:  ACTIVE                                              ║
-║ Mode:    WARM (12 scopes, 150 observations)                  ║
-║ Uptime:  2026-06-24T15:30 → 2026-06-25T16:45                ║
-║ Structured events: 1267 jsonl records                        ║
-╠══════════════════════════════════════════════════════════════╣
-║ Scope                              Obs  Positions  Stable    ║
-║ deepseek__deepseek-chat__orch       12         25   25/25    ║
-║ deepseek__deepseek-chat__oracle      3          5    5/5     ║
-╠══════════════════════════════════════════════════════════════╣
-║ Est. savings: $1.2345 over 50 calls                         ║
-║ Warm cache: 52 stable hashes pinned (18 global + 34 scoped) ║
-║ Cache hit: 96.4% (29952/31061 input tokens)                 ║
-║ Last reorder: S:25 U:0 D:0 T:25 obs:150                     ║
-╚══════════════════════════════════════════════════════════════╝
-```
+The dashboard reports active scopes, stable hashes, real provider cache hit
+rate, and estimated savings.
 
 ## 🏗 How It Works
 
@@ -323,55 +311,6 @@ before the provider cache warmed, and later samples reached 90%+ hit rate.
 | **Codex**       | ✅ Companion plugin + skill      | `.codex-plugin/plugin.json` + `skills/`            |
 | **Gemini CLI**  | 🔜 Planned                       | Google context caching                             |
 
-## 🧩 API (standalone usage)
-
-The core engine is CLI-agnostic. Use it in any project:
-
-```typescript
-import { emptyDB, updateDB, classify } from "agent-cache-optimizer"
-
-// Track stability
-let db = emptyDB()
-const blocks = ["HANDOFF...", "CLAUDE.md...", "AGENT...", "MEMORY..."]
-
-// Classify and reorder
-const classified = classify(blocks, db)
-const optimized = [...classified.stable, ...classified.unknown, ...classified.dynamic]
-
-// Update for next call
-db = updateDB(db, optimized)
-```
-
-## 📁 Project Structure
-
-```
-agent-cache-optimizer/
-├── src/
-│   ├── index.ts          # OpenCode plugin entry
-│   ├── core.ts           # Content-addressed hash engine
-│   ├── heuristics.ts     # Cold-start + content classifiers
-│   ├── splitting.ts      # Large block splitter (brace-depth parser)
-│   ├── types.ts          # TypeScript types
-│   └── __tests__/        # Unit tests (vitest)
-│       ├── plugin.test.ts
-│       └── heuristics-splitting.test.ts
-├── adapters/
-│   ├── claude-code.md    # Claude Code optimization guide
-│   └── conversation-log.md # Append-only log guidelines
-├── bin/
-│   └── aco               # CLI: agent-cache-optimizer status
-├── scripts/
-│   ├── cache-status.sh   # Legacy status script
-│   └── check-cache-friendly.sh  # Config audit tool
-├── docs/
-│   ├── deep-research-kv-cache.md  # DeepSeek KV cache research
-│   ├── cross-cli.md               # Cross-CLI architecture
-│   └── upstream.md                # Upstream fix recommendations
-├── README.md + README.zh-CN.md
-├── CHANGELOG.md
-└── LICENSE (MIT)
-```
-
 ## 🛠 Cache-Friendliness Audit
 
 Check any config file for patterns that bust the KV cache:
@@ -393,7 +332,8 @@ are position-independent by design.
 
 **Q: Does it work with non-OpenCode agents?**
 A: The core engine is CLI-agnostic. Adapters exist for OpenCode (plugin) and
-Claude Code (guidelines). Codex and Gemini CLI adapters are planned.
+Claude Code (companion plugin + guidelines). Codex ships a companion plugin and
+status skill. Gemini CLI guidance is planned.
 
 **Q: What if my prompts change?**
 A: The hash-based tracking adapts automatically. If a previously-stable block
@@ -403,6 +343,16 @@ block is added, it converges to stable after a few observations.
 **Q: Does this work with Anthropic's prompt caching?**
 A: Yes — the `chat.headers` hook adds the `prompt-caching-2024-07-31` beta
 header automatically for Anthropic providers.
+
+## ⭐ Star History
+
+<a href="https://www.star-history.com/#uuie/agent-cache-optimizer&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=uuie/agent-cache-optimizer&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=uuie/agent-cache-optimizer&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=uuie/agent-cache-optimizer&type=Date" />
+  </picture>
+</a>
 
 ## 📄 License
 
